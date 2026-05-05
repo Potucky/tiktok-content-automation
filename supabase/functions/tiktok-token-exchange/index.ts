@@ -1,17 +1,19 @@
 // tiktok-token-exchange — Supabase Edge Function
 //
-// Receives a TikTok authorization code from the frontend and exchanges it
-// for an access token server-side.  The access_token and refresh_token are
-// NEVER forwarded to the browser — they must be stored server-side (e.g. a
-// Supabase DB row keyed by open_id) before this function goes to production.
+// Exchanges a TikTok authorization code for tokens server-side, then persists
+// them to public.creatorflow_tiktok_connections via the Supabase REST API
+// (service role).  Tokens are NEVER returned to the browser.
 //
-// Required Supabase secrets (set via `supabase secrets set`):
-//   TIKTOK_CLIENT_KEY      — app client_key from TikTok Developer Portal
-//   TIKTOK_CLIENT_SECRET   — app client_secret (never logged, never returned)
-//   TIKTOK_REDIRECT_URI    — must match the URI registered in TikTok Developer Portal
-//   ALLOWED_ORIGIN         — frontend origin, e.g. https://yourdomain.com
+// Required secrets (set via `supabase secrets set`):
+//   TIKTOK_CLIENT_KEY         — app client_key from TikTok Developer Portal
+//   TIKTOK_CLIENT_SECRET      — never logged, never returned to caller
+//   TIKTOK_REDIRECT_URI       — must exactly match TikTok Developer Portal
+//   ALLOWED_ORIGIN            — frontend origin for CORS
+//   SUPABASE_URL              — project REST base URL, e.g. https://<ref>.supabase.co
+//   SUPABASE_SERVICE_ROLE_KEY — service role key; used only server-side, never returned
 
 const TIKTOK_TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/";
+const DB_TABLE = "creatorflow_tiktok_connections";
 
 // TikTok v2 token endpoint response shape
 interface TikTokTokenResponse {
@@ -21,6 +23,7 @@ interface TikTokTokenResponse {
   scope?: string;
   token_type?: string;
   expires_in?: number;
+  refresh_expires_in?: number;
   error?: string;
   error_description?: string;
   log_id?: string;
@@ -69,12 +72,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const clientKey = Deno.env.get("TIKTOK_CLIENT_KEY");
   const clientSecret = Deno.env.get("TIKTOK_CLIENT_SECRET");
   const redirectUri = Deno.env.get("TIKTOK_REDIRECT_URI");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-  if (!clientKey || !clientSecret || !redirectUri) {
-    // Log which *names* are absent — never log values.
-    const missing = ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REDIRECT_URI"]
-      .filter((k) => !Deno.env.get(k))
-      .join(", ");
+  if (!clientKey || !clientSecret || !redirectUri || !supabaseUrl || !serviceRoleKey) {
+    const required = [
+      "TIKTOK_CLIENT_KEY",
+      "TIKTOK_CLIENT_SECRET",
+      "TIKTOK_REDIRECT_URI",
+      "SUPABASE_URL",
+      "SUPABASE_SERVICE_ROLE_KEY",
+    ];
+    // Log absent key *names* only — never log values.
+    const missing = required.filter((k) => !Deno.env.get(k)).join(", ");
     console.error(`[tiktok-token-exchange] Missing secrets: ${missing}`);
     return json({ ok: false, error: "Server configuration error" }, 500);
   }
@@ -119,19 +129,63 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  // ── Success — return only safe fields ──────────────────────────────────────
-  //
-  // SECURITY: access_token and refresh_token are intentionally omitted.
-  // TODO (before production): persist access_token + refresh_token in a
-  //   Supabase table row keyed by open_id, then return only a session
-  //   reference (e.g. a short-lived signed JWT or a row ID) to the browser.
-  //
+  // ── Persist tokens server-side ─────────────────────────────────────────────
+  // SECURITY: access_token and refresh_token are written to the DB but are
+  // intentionally absent from the response returned to the browser.
+  // serviceRoleKey is used only for this outbound request; it is never logged
+  // and never included in any response.
+  const now = Date.now();
+  const expiresIn = tikTokData.expires_in ?? 0;
+  const refreshExpiresIn = tikTokData.refresh_expires_in;
+
+  const record = {
+    open_id: tikTokData.open_id,
+    scope: tikTokData.scope ?? null,
+    token_type: tikTokData.token_type ?? null,
+    access_token: tikTokData.access_token,          // stored server-side only
+    refresh_token: tikTokData.refresh_token ?? null, // stored server-side only
+    expires_in: expiresIn,
+    access_token_expires_at: new Date(now + expiresIn * 1000).toISOString(),
+    last_token_exchange_at: new Date(now).toISOString(),
+    ...(refreshExpiresIn != null && {
+      refresh_expires_in: refreshExpiresIn,
+      refresh_token_expires_at: new Date(now + refreshExpiresIn * 1000).toISOString(),
+    }),
+  };
+
+  try {
+    const dbRes = await fetch(`${supabaseUrl}/rest/v1/${DB_TABLE}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": serviceRoleKey,
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "Prefer": "resolution=merge-duplicates",
+      },
+      body: JSON.stringify(record),
+    });
+
+    if (!dbRes.ok) {
+      // Log HTTP status only — no secrets, no token values.
+      console.error(`[tiktok-token-exchange] DB upsert failed: HTTP ${dbRes.status}`);
+      return json({ ok: false, error: "token_storage_failed" }, 500);
+    }
+  } catch (err) {
+    console.error(
+      "[tiktok-token-exchange] DB upsert threw:",
+      (err as Error).message,
+    );
+    return json({ ok: false, error: "token_storage_failed" }, 502);
+  }
+
+  // ── Return safe fields only ────────────────────────────────────────────────
   return json({
     ok: true,
     tokenReceived: !!tikTokData.access_token,
     openIdReceived: !!tikTokData.open_id,
+    stored: true,
     scope: tikTokData.scope ?? null,
     tokenType: tikTokData.token_type ?? null,
-    expiresIn: tikTokData.expires_in ?? null,
+    expiresIn: expiresIn || null,
   });
 });
