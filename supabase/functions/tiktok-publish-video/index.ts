@@ -2,7 +2,8 @@
 //
 // Initiates a TikTok Content Posting API inbox upload.
 // Supports PULL_FROM_URL (default) and FILE_UPLOAD modes.
-// Tokens are NEVER returned to the browser or written to logs.
+// FILE_UPLOAD supports optional server-side binary upload (upload_binary: true).
+// Tokens and upload_url are NEVER returned to the browser or written to logs.
 //
 // Required secrets (set via `supabase secrets set`):
 //   SUPABASE_URL              — project REST base URL
@@ -59,6 +60,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ── Parse body ──────────────────────────────────────────────────────────────
   let uploadMode: UploadMode;
+  let uploadBinary: boolean;
   let videoUrl: string | undefined;
   let title: string | undefined;
   let privacyLevel: string | undefined;
@@ -69,6 +71,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try {
     const body = (await req.json()) as {
       upload_mode?: string;
+      upload_binary?: boolean;
       video_url?: string;
       title?: string;
       privacy_level?: string;
@@ -85,6 +88,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
     uploadMode = rawMode;
+    uploadBinary = body.upload_binary === true;
     videoUrl = body.video_url;
     title = body.title;
     privacyLevel = body.privacy_level;
@@ -109,15 +113,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
   } else {
     // FILE_UPLOAD
-    if (videoSize === undefined) {
-      return json(
-        { ok: false, error: "Missing required field: video_size for FILE_UPLOAD mode" },
-        400,
-      );
+    if (uploadBinary) {
+      // video_url required for server-side download; video_size derived from bytes if absent
+      if (!videoUrl) {
+        return json(
+          { ok: false, error: "Missing required field: video_url for FILE_UPLOAD with upload_binary" },
+          400,
+        );
+      }
+    } else {
+      // init-only: video_size must be known up front
+      if (videoSize === undefined) {
+        return json(
+          { ok: false, error: "Missing required field: video_size for FILE_UPLOAD mode" },
+          400,
+        );
+      }
+      chunkSize = chunkSize ?? videoSize;
+      totalChunkCount = totalChunkCount ?? 1;
     }
-    // Apply defaults
-    chunkSize = chunkSize ?? videoSize;
-    totalChunkCount = totalChunkCount ?? 1;
   }
 
   // ── Read secrets ────────────────────────────────────────────────────────────
@@ -173,6 +187,32 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: false, error: "TikTok access token unavailable" }, 401);
   }
 
+  // ── Download video bytes (FILE_UPLOAD + upload_binary only) ────────────────
+  // videoSize may be derived here if the caller did not supply it.
+  let videoBytes: ArrayBuffer | null = null;
+  if (uploadMode === "FILE_UPLOAD" && uploadBinary) {
+    try {
+      const dlRes = await fetch(videoUrl!);
+      if (!dlRes.ok) {
+        console.error(`[tiktok-publish-video] Video download failed: HTTP ${dlRes.status}`);
+        return json(
+          { ok: false, error: "Failed to download video from video_url", downloadStatus: dlRes.status },
+          502,
+        );
+      }
+      videoBytes = await dlRes.arrayBuffer();
+      if (videoSize === undefined) {
+        videoSize = videoBytes.byteLength;
+      }
+    } catch (err) {
+      console.error("[tiktok-publish-video] Video download threw:", (err as Error).message);
+      return json({ ok: false, error: "Failed to download video from video_url" }, 502);
+    }
+    // Apply defaults now that videoSize is known
+    chunkSize = chunkSize ?? videoSize;
+    totalChunkCount = totalChunkCount ?? 1;
+  }
+
   // ── Build source_info per mode ─────────────────────────────────────────────
   const sourceInfo =
     uploadMode === "PULL_FROM_URL"
@@ -184,9 +224,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
           total_chunk_count: totalChunkCount,
         };
 
-  // ── Shared safe diagnostic fields (tokens intentionally absent) ────────────
+  // ── Shared safe diagnostic fields (tokens and upload_url intentionally absent)
   const diagnostics = {
     uploadMode,
+    uploadBinary,
     connectionFound,
     tokenAvailable,
     openIdPresent,
@@ -251,15 +292,69 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
+  const uploadUrlReceived = !!tikTokData.data?.upload_url;
+
+  // ── Binary PUT to TikTok upload_url (FILE_UPLOAD + upload_binary only) ─────
+  // upload_url is consumed server-side only; never logged, never returned.
+  let binaryUploadAttempted = false;
+  let binaryUploadStatus: number | undefined;
+  let binaryUploadOk: boolean | undefined;
+
+  if (uploadMode === "FILE_UPLOAD" && uploadBinary && videoBytes !== null) {
+    const uploadUrl = tikTokData.data?.upload_url;
+    if (!uploadUrl) {
+      return json(
+        {
+          ok: false,
+          ...diagnostics,
+          tikTokStatus: 200,
+          uploadUrlReceived,
+          binaryUploadAttempted: false,
+          error: "TikTok did not return upload_url",
+        },
+        502,
+      );
+    }
+
+    binaryUploadAttempted = true;
+    try {
+      const putHeaders: Record<string, string> = {
+        "Content-Type": "video/mp4",
+      };
+      if (videoSize !== undefined) {
+        putHeaders["Content-Length"] = String(videoSize);
+        putHeaders["Content-Range"] = `bytes 0-${videoSize - 1}/${videoSize}`;
+      }
+
+      const putRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: putHeaders,
+        body: videoBytes,
+      });
+
+      binaryUploadStatus = putRes.status;
+      binaryUploadOk = putRes.ok;
+
+      if (!putRes.ok) {
+        console.error(`[tiktok-publish-video] Binary PUT failed: HTTP ${putRes.status}`);
+      }
+    } catch (err) {
+      console.error("[tiktok-publish-video] Binary PUT threw:", (err as Error).message);
+      binaryUploadOk = false;
+    }
+  }
+
   // ── Return safe fields only ────────────────────────────────────────────────
-  // upload_url is withheld intentionally — not yet used client-side.
-  // access_token and refresh_token are never included.
+  // upload_url, access_token, and refresh_token are intentionally absent.
   return json({
-    ok: true,
+    ok: binaryUploadAttempted ? binaryUploadOk === true : true,
     ...diagnostics,
     tikTokStatus: 200,
     ...(tikTokData.data?.publish_id !== undefined && { publishId: tikTokData.data.publish_id }),
-    uploadUrlReceived: !!tikTokData.data?.upload_url,
+    uploadUrlReceived,
+    binaryUploadAttempted,
+    ...(binaryUploadAttempted && { binaryUploadStatus }),
+    ...(binaryUploadAttempted && { binaryUploadOk }),
     ...(tikTokData.error?.log_id !== undefined && { tikTokLogId: tikTokData.error.log_id }),
   });
 });
