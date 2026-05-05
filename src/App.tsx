@@ -12,9 +12,9 @@ function App() {
 
           <h2>Purpose</h2>
           <p>
-            TikTok Content Automation is a creator tool intended to help the account
+            CreatorFlow Studio is a creator tool intended to help the account
             owner prepare, upload, and publish short-form video content to their own
-            TikTok account using TikTok's official Content Posting API.
+            TikTok account using supported content posting APIs.
           </p>
 
           <h2>Authorized Use</h2>
@@ -51,9 +51,9 @@ function App() {
 
           <h2>Overview</h2>
           <p>
-            TikTok Content Automation is a creator tool used to help the account owner
-            prepare, upload, and publish short-form video content to their own TikTok
-            account using TikTok's official Content Posting API.
+            CreatorFlow Studio is a creator tool used to help the account owner
+            prepare, upload, and publish short-form video content to their connected creator
+            account using supported content posting APIs.
           </p>
 
           <h2>Information We May Access</h2>
@@ -90,10 +90,10 @@ function App() {
     <main className="page">
       <section className="hero">
         <div className="badge">Creator API Tool</div>
-        <h1>TikTok Content Automation</h1>
+        <h1>CreatorFlow Studio</h1>
         <p>
           A creator tool for preparing, uploading, and publishing short-form video
-          content to the owner's TikTok account using the official TikTok Content
+          content to the owner's connected creator account using the official TikTok Content
           Posting API.
         </p>
 
