@@ -1,8 +1,7 @@
 // tiktok-publish-video — Supabase Edge Function
 //
-// Skeleton: loads the latest TikTok connection record and validates token
-// presence before making any outbound call to TikTok.  The actual Content
-// Posting API upload is not yet implemented.
+// Initiates a TikTok Content Posting API inbox upload via PULL_FROM_URL.
+// Tokens are NEVER returned to the browser or written to logs.
 //
 // Required secrets (set via `supabase secrets set`):
 //   SUPABASE_URL              — project REST base URL
@@ -124,7 +123,91 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: false, error: "TikTok access token unavailable" }, 401);
   }
 
-  // ── Skeleton response — upload not yet implemented ─────────────────────────
+  // ── Call TikTok Content Posting API — inbox upload init ───────────────────
+  // PULL_FROM_URL: TikTok fetches the video from videoUrl server-to-server.
+  // access_token is used here server-side only; never logged, never returned.
+  interface TikTokInitResponse {
+    data?: {
+      publish_id?: string;
+      upload_url?: string;
+    };
+    error?: {
+      code?: string;
+      message?: string;
+      log_id?: string;
+    };
+  }
+
+  let tikTokData: TikTokInitResponse;
+  try {
+    const tikTokRes = await fetch(
+      "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/",
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${connection!.access_token}`,
+          "Content-Type": "application/json; charset=UTF-8",
+        },
+        body: JSON.stringify({
+          source_info: {
+            source: "PULL_FROM_URL",
+            video_url: videoUrl,
+          },
+        }),
+      },
+    );
+
+    tikTokData = (await tikTokRes.json()) as TikTokInitResponse;
+
+    if (!tikTokRes.ok) {
+      console.error(
+        `[tiktok-publish-video] TikTok init failed: HTTP ${tikTokRes.status}`,
+      );
+      return json(
+        {
+          ok: false,
+          connectionFound,
+          tokenAvailable,
+          openIdPresent,
+          requestedVideoUrl: videoUrl,
+          requestedTitle: title,
+          ...(privacyLevel !== undefined && { requestedPrivacyLevel: privacyLevel }),
+          tikTokStatus: tikTokRes.status,
+          ...(tikTokData.error?.code !== undefined && { tikTokErrorCode: tikTokData.error.code }),
+          ...(tikTokData.error?.message !== undefined && { tikTokErrorMessage: tikTokData.error.message }),
+          ...(tikTokData.error?.log_id !== undefined && { tikTokLogId: tikTokData.error.log_id }),
+        },
+        502,
+      );
+    }
+  } catch (err) {
+    console.error(
+      "[tiktok-publish-video] TikTok init threw:",
+      (err as Error).message,
+    );
+    return json({ ok: false, error: "Failed to reach TikTok API" }, 502);
+  }
+
+  // ── Guard: TikTok application-level error ─────────────────────────────────
+  if (tikTokData.error?.code && tikTokData.error.code !== "ok") {
+    return json(
+      {
+        ok: false,
+        connectionFound,
+        tokenAvailable,
+        openIdPresent,
+        requestedVideoUrl: videoUrl,
+        requestedTitle: title,
+        ...(privacyLevel !== undefined && { requestedPrivacyLevel: privacyLevel }),
+        tikTokErrorCode: tikTokData.error.code,
+        ...(tikTokData.error.message !== undefined && { tikTokErrorMessage: tikTokData.error.message }),
+        ...(tikTokData.error.log_id !== undefined && { tikTokLogId: tikTokData.error.log_id }),
+      },
+      502,
+    );
+  }
+
+  // ── Return safe fields only ────────────────────────────────────────────────
   // SECURITY: access_token and refresh_token are intentionally absent.
   return json({
     ok: true,
@@ -134,6 +217,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     requestedVideoUrl: videoUrl,
     requestedTitle: title,
     ...(privacyLevel !== undefined && { requestedPrivacyLevel: privacyLevel }),
-    nextStep: "TikTok Content Posting API upload call not implemented yet",
+    tikTokStatus: 200,
+    ...(tikTokData.data?.publish_id !== undefined && { publishId: tikTokData.data.publish_id }),
+    uploadUrlReceived: !!tikTokData.data?.upload_url,
+    ...(tikTokData.error?.log_id !== undefined && { tikTokLogId: tikTokData.error.log_id }),
   });
 });
