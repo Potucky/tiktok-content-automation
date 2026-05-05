@@ -1,0 +1,23 @@
+{
+  "appName": "CreatorFlow Studio",
+  "category": "Productivity",
+  "description": "A creator tool for managing short-form video publishing workflows through supported platform APIs.",
+  "websiteUrl": "https://potucky.github.io/tiktok-content-automation/",
+  "termsUrl": "https://potucky.github.io/tiktok-content-automation/terms/",
+  "privacyUrl": "https://potucky.github.io/tiktok-content-automation/privacy/",
+  "verifiedUrlPrefix": "https://potucky.github.io/tiktok-content-automation/",
+  "githubRepository": "https://github.com/Potucky/tiktok-content-automation",
+  "localProjectPath": "~/tiktok-content-automation",
+  "safeIconRules": [
+    "Use original artwork only",
+    "Do not use TikTok logo or TikTok-like symbols",
+    "Do not use TCA old branding",
+    "Use generic creator workflow, play, automation, gear, or queue visuals"
+  ],
+  "plannedProduct": "Content Posting API",
+  "plannedScopes": [
+    "user.info.basic",
+    "video.upload",
+    "video.publish"
+  ]
+}
