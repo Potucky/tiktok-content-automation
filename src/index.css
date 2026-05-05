@@ -109,3 +109,126 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* ── TikTok Sandbox Connection ── */
+.tt-section {
+  text-align: left;
+}
+
+.tt-meta-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-bottom: 0.4rem;
+  font-size: 0.875rem;
+}
+
+.tt-label {
+  color: var(--text);
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.tt-value {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-h);
+  word-break: break-all;
+}
+
+.tt-missing {
+  color: #dc4c4c;
+}
+
+.tt-btn {
+  display: inline-block;
+  margin-top: 1.25rem;
+  padding: 0.55rem 1.3rem;
+  background: #fe2c55;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tt-btn:hover:not(:disabled) {
+  background: #e0183e;
+}
+
+.tt-btn:disabled {
+  background: #888;
+  cursor: not-allowed;
+}
+
+.tt-warning {
+  margin-top: 1rem;
+  padding: 0.7rem 0.9rem;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.tt-warning--callback {
+  margin-top: 1rem;
+}
+
+.tt-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.25rem 0 1rem;
+}
+
+.tt-callback h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  margin: 0 0 0.75rem;
+}
+
+.tt-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.875rem;
+}
+
+.tt-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+.tt-ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.tt-fail {
+  background: rgba(220, 76, 76, 0.12);
+  color: #dc4c4c;
+  border: 1px solid rgba(220, 76, 76, 0.3);
+}
+
+.tt-warn {
+  background: rgba(251, 191, 36, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.tt-code {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--text);
+  word-break: break-all;
+}
