@@ -4,6 +4,8 @@ import './App.css';
 const TIKTOK_AUTH_BASE = 'https://www.tiktok.com/v2/auth/authorize/';
 const SCOPE = 'user.info.basic,video.upload';
 const SESSION_STATE_KEY = 'tiktok_oauth_state';
+const EDGE_FUNCTION_URL =
+  'https://sivnzgaphtgbepeinidz.supabase.co/functions/v1/tiktok-token-exchange';
 
 interface CallbackResult {
   code: string | null;
@@ -12,6 +14,21 @@ interface CallbackResult {
   error: string | null;
   errorDescription: string | null;
 }
+
+// Safe fields only — access_token and refresh_token are intentionally absent
+interface TokenExchangeResult {
+  ok: boolean;
+  tokenReceived?: boolean;
+  openIdReceived?: boolean;
+  scope?: string | null;
+  tokenType?: string | null;
+  expiresIn?: number | null;
+  error?: string;
+  error_description?: string | null;
+  log_id?: string | null;
+}
+
+type ExchangeStatus = 'idle' | 'loading' | 'done' | 'skipped';
 
 function maskKey(key: string): string {
   if (key.length <= 6) return '*'.repeat(key.length);
@@ -48,10 +65,47 @@ function parseCallback(): CallbackResult | null {
 function App() {
   const path = window.location.pathname;
   const [callbackResult, setCallbackResult] = useState<CallbackResult | null>(null);
+  const [exchangeStatus, setExchangeStatus] = useState<ExchangeStatus>('idle');
+  const [tokenResult, setTokenResult] = useState<TokenExchangeResult | null>(null);
 
   useEffect(() => {
     setCallbackResult(parseCallback());
   }, []);
+
+  useEffect(() => {
+    if (!callbackResult?.code) return;
+
+    const stateValid =
+      callbackResult.returnedState !== null &&
+      callbackResult.savedState !== null &&
+      callbackResult.returnedState === callbackResult.savedState;
+
+    if (!stateValid) {
+      setExchangeStatus('skipped');
+      return;
+    }
+
+    setExchangeStatus('loading');
+    fetch(EDGE_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: callbackResult.code,
+        state: callbackResult.returnedState,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => setTokenResult(data as TokenExchangeResult))
+      .catch(() =>
+        setTokenResult({
+          ok: false,
+          error: 'Network error',
+          error_description: 'Failed to reach the token exchange endpoint.',
+          log_id: null,
+        }),
+      )
+      .finally(() => setExchangeStatus('done'));
+  }, [callbackResult]);
 
   const clientKey = import.meta.env.VITE_TIKTOK_CLIENT_KEY as string | undefined;
   const redirectUri = import.meta.env.VITE_TIKTOK_REDIRECT_URI as string | undefined;
@@ -256,6 +310,96 @@ function App() {
               <strong>Next step (backend only):</strong> Token exchange must be handled by a
               secure backend. Do not expose Client Secret in the browser.
             </p>
+          </div>
+        )}
+
+        {exchangeStatus !== 'idle' && (
+          <div className="tt-exchange">
+            <hr className="tt-divider" />
+            <h3>Token Exchange Result</h3>
+
+            {exchangeStatus === 'skipped' && (
+              <p className="tt-warning">
+                State mismatch — token exchange skipped for security.
+              </p>
+            )}
+
+            {exchangeStatus === 'loading' && (
+              <p className="tt-exchange-loading">Exchanging token with backend…</p>
+            )}
+
+            {exchangeStatus === 'done' && tokenResult && (
+              <>
+                <div className="tt-status-row">
+                  <span className="tt-label">Status</span>
+                  <span className={`tt-badge ${tokenResult.ok ? 'tt-ok' : 'tt-fail'}`}>
+                    {tokenResult.ok ? 'ok' : 'error'}
+                  </span>
+                </div>
+
+                {tokenResult.ok ? (
+                  <>
+                    <div className="tt-status-row">
+                      <span className="tt-label">Token received</span>
+                      <span className={`tt-badge ${tokenResult.tokenReceived ? 'tt-ok' : 'tt-fail'}`}>
+                        {tokenResult.tokenReceived ? 'yes' : 'no'}
+                      </span>
+                    </div>
+
+                    <div className="tt-status-row">
+                      <span className="tt-label">Open ID received</span>
+                      <span className={`tt-badge ${tokenResult.openIdReceived ? 'tt-ok' : 'tt-fail'}`}>
+                        {tokenResult.openIdReceived ? 'yes' : 'no'}
+                      </span>
+                    </div>
+
+                    {tokenResult.scope && (
+                      <div className="tt-meta-row">
+                        <span className="tt-label">Scope</span>
+                        <span className="tt-value">{tokenResult.scope}</span>
+                      </div>
+                    )}
+
+                    {tokenResult.tokenType && (
+                      <div className="tt-meta-row">
+                        <span className="tt-label">Token type</span>
+                        <span className="tt-value">{tokenResult.tokenType}</span>
+                      </div>
+                    )}
+
+                    {tokenResult.expiresIn != null && (
+                      <div className="tt-meta-row">
+                        <span className="tt-label">Expires in</span>
+                        <span className="tt-value">{tokenResult.expiresIn}s</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {tokenResult.error && (
+                      <div className="tt-status-row">
+                        <span className="tt-label">Error</span>
+                        <span className="tt-badge tt-fail">{tokenResult.error}</span>
+                      </div>
+                    )}
+
+                    {tokenResult.error_description && (
+                      <div className="tt-meta-row">
+                        <span className="tt-label">Description</span>
+                        <span className="tt-value">{tokenResult.error_description}</span>
+                      </div>
+                    )}
+
+                    {tokenResult.log_id && (
+                      <div className="tt-meta-row">
+                        <span className="tt-label">Log ID</span>
+                        <span className="tt-code">{tokenResult.log_id}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
           </div>
         )}
       </section>
