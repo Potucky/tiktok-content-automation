@@ -154,13 +154,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   };
 
   try {
-    const dbRes = await fetch(`${supabaseUrl}/rest/v1/${DB_TABLE}`, {
+    const dbRes = await fetch(`${supabaseUrl}/rest/v1/${DB_TABLE}?on_conflict=open_id`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "apikey": serviceRoleKey,
         "Authorization": `Bearer ${serviceRoleKey}`,
-        "Prefer": "resolution=merge-duplicates",
+        "Prefer": "resolution=merge-duplicates,return=minimal",
       },
       body: JSON.stringify(record),
     });
