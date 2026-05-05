@@ -33,6 +33,20 @@ interface TikTokInitResponse {
   };
 }
 
+interface TikTokStatusResponse {
+  data?: {
+    status?: string;
+    fail_reason?: string;
+    uploaded_bytes?: number;
+    publish_id?: string;
+  };
+  error?: {
+    code?: string;
+    message?: string;
+    log_id?: string;
+  };
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const allowedOrigin = Deno.env.get("ALLOWED_ORIGIN") ?? "*";
 
@@ -61,6 +75,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ── Parse body ──────────────────────────────────────────────────────────────
   let uploadMode: UploadMode;
   let uploadBinary: boolean;
+  let checkStatus: boolean;
   let videoUrl: string | undefined;
   let title: string | undefined;
   let privacyLevel: string | undefined;
@@ -72,6 +87,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const body = (await req.json()) as {
       upload_mode?: string;
       upload_binary?: boolean;
+      check_status?: boolean;
       video_url?: string;
       title?: string;
       privacy_level?: string;
@@ -89,6 +105,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     uploadMode = rawMode;
     uploadBinary = body.upload_binary === true;
+    checkStatus = body.check_status === true;
     videoUrl = body.video_url;
     title = body.title;
     privacyLevel = body.privacy_level;
@@ -344,17 +361,79 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
   }
 
+  const publishId = tikTokData.data?.publish_id;
+  const uploadOk = binaryUploadAttempted ? binaryUploadOk === true : true;
+
+  // ── Optional: check TikTok publish status ──────────────────────────────────
+  // Runs after init/upload if check_status is true and a publish_id is present.
+  // A status check failure does not override the upload ok result.
+  // access_token is used server-side only; never logged, never returned.
+  let statusCheckAttempted = false;
+  let statusCheckOk: boolean | undefined;
+  let statusCheckHttpStatus: number | undefined;
+  let publishStatus: string | undefined;
+  let failReason: string | undefined;
+  let uploadedBytes: number | undefined;
+  let statusTikTokErrorCode: string | undefined;
+  let statusTikTokErrorMessage: string | undefined;
+  let statusTikTokLogId: string | undefined;
+
+  if (checkStatus && publishId) {
+    statusCheckAttempted = true;
+    try {
+      const statusRes = await fetch(
+        "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${connection!.access_token}`,
+            "Content-Type": "application/json; charset=UTF-8",
+          },
+          body: JSON.stringify({ publish_id: publishId }),
+        },
+      );
+
+      statusCheckHttpStatus = statusRes.status;
+      statusCheckOk = statusRes.ok;
+
+      const statusData = (await statusRes.json()) as TikTokStatusResponse;
+
+      if (statusData.data?.status !== undefined) publishStatus = statusData.data.status;
+      if (statusData.data?.fail_reason !== undefined) failReason = statusData.data.fail_reason;
+      if (statusData.data?.uploaded_bytes !== undefined) uploadedBytes = statusData.data.uploaded_bytes;
+      if (statusData.error?.code !== undefined) statusTikTokErrorCode = statusData.error.code;
+      if (statusData.error?.message !== undefined) statusTikTokErrorMessage = statusData.error.message;
+      if (statusData.error?.log_id !== undefined) statusTikTokLogId = statusData.error.log_id;
+
+      if (!statusRes.ok) {
+        console.error(`[tiktok-publish-video] Status check failed: HTTP ${statusRes.status}`);
+      }
+    } catch (err) {
+      console.error("[tiktok-publish-video] Status check threw:", (err as Error).message);
+      statusCheckOk = false;
+    }
+  }
+
   // ── Return safe fields only ────────────────────────────────────────────────
   // upload_url, access_token, and refresh_token are intentionally absent.
   return json({
-    ok: binaryUploadAttempted ? binaryUploadOk === true : true,
+    ok: uploadOk,
     ...diagnostics,
     tikTokStatus: 200,
-    ...(tikTokData.data?.publish_id !== undefined && { publishId: tikTokData.data.publish_id }),
+    ...(publishId !== undefined && { publishId }),
     uploadUrlReceived,
     binaryUploadAttempted,
     ...(binaryUploadAttempted && { binaryUploadStatus }),
     ...(binaryUploadAttempted && { binaryUploadOk }),
     ...(tikTokData.error?.log_id !== undefined && { tikTokLogId: tikTokData.error.log_id }),
+    statusCheckAttempted,
+    ...(statusCheckAttempted && { statusCheckOk }),
+    ...(statusCheckAttempted && { statusCheckHttpStatus }),
+    ...(publishStatus !== undefined && { publishStatus }),
+    ...(failReason !== undefined && { failReason }),
+    ...(uploadedBytes !== undefined && { uploadedBytes }),
+    ...(statusTikTokErrorCode !== undefined && { statusTikTokErrorCode }),
+    ...(statusTikTokErrorMessage !== undefined && { statusTikTokErrorMessage }),
+    ...(statusTikTokLogId !== undefined && { statusTikTokLogId }),
   });
 });
