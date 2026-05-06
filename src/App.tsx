@@ -5,7 +5,7 @@ const TIKTOK_AUTH_BASE = 'https://www.tiktok.com/v2/auth/authorize/';
 const SCOPE = 'user.info.basic,video.upload';
 const SESSION_STATE_KEY = 'tiktok_oauth_state';
 const EDGE_FUNCTION_URL =
-  'https://sivnzgaphtgbepeinidz.supabase.co/functions/v1/tiktok-token-exchange';
+  'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-token-exchange';
 
 interface CallbackResult {
   code: string | null;
