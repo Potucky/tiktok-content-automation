@@ -6,6 +6,11 @@ const SCOPE = 'user.info.basic,video.upload';
 const SESSION_STATE_KEY = 'tiktok_oauth_state';
 const EDGE_FUNCTION_URL =
   'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-token-exchange';
+const PUBLISH_URL =
+  'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-publish-video';
+const TEST_VIDEO_URL =
+  'https://potucky.github.io/tiktok-content-automation/test-videos/tiktok-test-upload.mp4';
+const DEFAULT_TITLE = 'New Supabase TikTok upload test';
 
 interface CallbackResult {
   code: string | null;
@@ -28,7 +33,20 @@ interface TokenExchangeResult {
   log_id?: string | null;
 }
 
+// Safe fields only — upload_url, access_token, refresh_token intentionally absent
+interface PublishResult {
+  ok?: boolean;
+  publishId?: string | null;
+  binaryUploadOk?: boolean | null;
+  binaryUploadStatus?: string | null;
+  statusCheckOk?: boolean | null;
+  publishStatus?: string | null;
+  uploadedBytes?: number | null;
+  error?: string;
+}
+
 type ExchangeStatus = 'idle' | 'loading' | 'done' | 'skipped';
+type PublishStatus = 'idle' | 'loading' | 'done';
 
 function maskKey(key: string): string {
   if (key.length <= 6) return '*'.repeat(key.length);
@@ -67,6 +85,11 @@ function App() {
   const [callbackResult, setCallbackResult] = useState<CallbackResult | null>(null);
   const [exchangeStatus, setExchangeStatus] = useState<ExchangeStatus>('idle');
   const [tokenResult, setTokenResult] = useState<TokenExchangeResult | null>(null);
+
+  const [title, setTitle] = useState(DEFAULT_TITLE);
+  const [consent, setConsent] = useState(false);
+  const [publishState, setPublishState] = useState<PublishStatus>('idle');
+  const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
 
   useEffect(() => {
     setCallbackResult(parseCallback());
@@ -114,6 +137,31 @@ function App() {
   function handleConnect() {
     if (!clientKey || !redirectUri) return;
     window.location.href = buildAuthUrl(clientKey, redirectUri);
+  }
+
+  async function handlePublish() {
+    setPublishState('loading');
+    setPublishResult(null);
+    try {
+      const res = await fetch(PUBLISH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          upload_mode: 'FILE_UPLOAD',
+          upload_binary: true,
+          check_status: true,
+          video_url: TEST_VIDEO_URL,
+          title,
+          privacy_level: 'SELF_ONLY',
+        }),
+      });
+      const data = await res.json();
+      setPublishResult(data as PublishResult);
+    } catch {
+      setPublishResult({ ok: false, error: 'Network error — could not reach publish endpoint.' });
+    } finally {
+      setPublishState('done');
+    }
   }
 
   if (path.includes('/terms')) {
@@ -397,6 +445,133 @@ function App() {
                       </div>
                     )}
                   </>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="card tt-section tt-publish-section">
+        <h2>TikTok Demo Publish Flow</h2>
+
+        <div className="tt-meta-row">
+          <span className="tt-label">Test video</span>
+          <a
+            className="tt-value"
+            href={TEST_VIDEO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {TEST_VIDEO_URL}
+          </a>
+        </div>
+
+        <div className="tt-field-row">
+          <label className="tt-label" htmlFor="publish-title">Title / Caption</label>
+          <input
+            id="publish-title"
+            className="tt-input"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </div>
+
+        <div className="tt-meta-row">
+          <span className="tt-label">Privacy level</span>
+          <span className="tt-value">SELF_ONLY</span>
+        </div>
+
+        <label className="tt-consent">
+          <input
+            type="checkbox"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+          />
+          I confirm that I want to send this video to my connected TikTok account.
+        </label>
+
+        <div>
+          <button
+            type="button"
+            className="tt-btn"
+            onClick={handlePublish}
+            disabled={!consent || publishState === 'loading'}
+          >
+            {publishState === 'loading' ? 'Sending…' : 'Send Test Video to TikTok'}
+          </button>
+        </div>
+
+        {publishState !== 'idle' && (
+          <div className="tt-exchange">
+            <hr className="tt-divider" />
+            <h3>Publish Result</h3>
+
+            {publishState === 'loading' && (
+              <p className="tt-exchange-loading">Publishing video…</p>
+            )}
+
+            {publishState === 'done' && publishResult && (
+              <>
+                <div className="tt-status-row">
+                  <span className="tt-label">ok</span>
+                  <span className={`tt-badge ${publishResult.ok ? 'tt-ok' : 'tt-fail'}`}>
+                    {String(publishResult.ok)}
+                  </span>
+                </div>
+
+                {publishResult.error && (
+                  <div className="tt-meta-row">
+                    <span className="tt-label">error</span>
+                    <span className="tt-code">{publishResult.error}</span>
+                  </div>
+                )}
+
+                {publishResult.publishId != null && (
+                  <div className="tt-meta-row">
+                    <span className="tt-label">publishId</span>
+                    <span className="tt-code">{publishResult.publishId}</span>
+                  </div>
+                )}
+
+                {publishResult.binaryUploadOk != null && (
+                  <div className="tt-status-row">
+                    <span className="tt-label">binaryUploadOk</span>
+                    <span className={`tt-badge ${publishResult.binaryUploadOk ? 'tt-ok' : 'tt-fail'}`}>
+                      {String(publishResult.binaryUploadOk)}
+                    </span>
+                  </div>
+                )}
+
+                {publishResult.binaryUploadStatus != null && (
+                  <div className="tt-meta-row">
+                    <span className="tt-label">binaryUploadStatus</span>
+                    <span className="tt-value">{publishResult.binaryUploadStatus}</span>
+                  </div>
+                )}
+
+                {publishResult.statusCheckOk != null && (
+                  <div className="tt-status-row">
+                    <span className="tt-label">statusCheckOk</span>
+                    <span className={`tt-badge ${publishResult.statusCheckOk ? 'tt-ok' : 'tt-fail'}`}>
+                      {String(publishResult.statusCheckOk)}
+                    </span>
+                  </div>
+                )}
+
+                {publishResult.publishStatus != null && (
+                  <div className="tt-meta-row">
+                    <span className="tt-label">publishStatus</span>
+                    <span className="tt-value">{publishResult.publishStatus}</span>
+                  </div>
+                )}
+
+                {publishResult.uploadedBytes != null && (
+                  <div className="tt-meta-row">
+                    <span className="tt-label">uploadedBytes</span>
+                    <span className="tt-value">{publishResult.uploadedBytes.toLocaleString()}</span>
+                  </div>
                 )}
               </>
             )}
