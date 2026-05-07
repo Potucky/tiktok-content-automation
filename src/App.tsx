@@ -197,7 +197,7 @@ function App() {
             settings before posting.
           </p>
 
-          <a href="/">Back to home</a>
+          <a href={import.meta.env.BASE_URL}>Back to home</a>
         </section>
       </main>
     );
@@ -241,7 +241,7 @@ function App() {
             exposed publicly or committed to public repositories.
           </p>
 
-          <a href="/">Back to home</a>
+          <a href={import.meta.env.BASE_URL}>Back to home</a>
         </section>
       </main>
     );
@@ -259,8 +259,8 @@ function App() {
         </p>
 
         <div className="links">
-          <a href="/terms">Terms of Service</a>
-          <a href="/privacy">Privacy Policy</a>
+          <a href={`${import.meta.env.BASE_URL}terms/`}>Terms of Service</a>
+          <a href={`${import.meta.env.BASE_URL}privacy/`}>Privacy Policy</a>
         </div>
       </section>
 
