@@ -1,5 +1,29 @@
 # CreatorFlow Studio Sandbox Checklist
 
+## Required Edge Function env variables
+
+Set all of these via `supabase secrets set <KEY>=<value>` before deploying or testing functions.
+
+### tiktok-token-exchange
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `TIKTOK_CLIENT_KEY` | yes | App client_key from TikTok Developer Portal |
+| `TIKTOK_CLIENT_SECRET` | yes | Never logged, never returned to caller |
+| `TIKTOK_REDIRECT_URI` | yes | Must exactly match TikTok Developer Portal |
+| `ALLOWED_ORIGIN` | yes | Frontend origin, e.g. `https://potucky.github.io` — no wildcard fallback |
+| `SUPABASE_URL` | yes | Project REST base URL, e.g. `https://<ref>.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes | Server-side only, never returned |
+
+### tiktok-publish-video
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `SUPABASE_URL` | yes | Project REST base URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes | Server-side only, never returned |
+| `ALLOWED_ORIGIN` | yes | Frontend origin — no wildcard fallback |
+| `TIKTOK_ENV` | yes | Must be exactly `sandbox` — function refuses all requests otherwise |
+
 ## Current status
 
 - Production TikTok app is in review.
@@ -11,16 +35,16 @@
 ## Public site checks
 
 - Homepage opens:
-  https://potucky.github.io/tiktok-content-automation/
+  <https://potucky.github.io/tiktok-content-automation/>
 
 - Terms page opens:
-  https://potucky.github.io/tiktok-content-automation/terms/
+  <https://potucky.github.io/tiktok-content-automation/terms/>
 
 - Privacy page opens:
-  https://potucky.github.io/tiktok-content-automation/privacy/
+  <https://potucky.github.io/tiktok-content-automation/privacy/>
 
 - Homepage legal buttons point to the correct GitHub Pages project path.
-- No legal link points to https://potucky.github.io/terms or https://potucky.github.io/privacy.
+- No legal link points to <https://potucky.github.io/terms> or <https://potucky.github.io/privacy>.
 
 ## Sandbox OAuth checks
 

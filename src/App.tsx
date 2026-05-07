@@ -10,7 +10,7 @@ const PUBLISH_URL =
   'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-publish-video';
 const TEST_VIDEO_URL =
   'https://potucky.github.io/tiktok-content-automation/test-videos/tiktok-test-upload.mp4';
-const DEFAULT_TITLE = 'New Supabase TikTok upload test';
+const DEFAULT_TITLE = 'TikTok inbox upload test';
 
 interface CallbackResult {
   code: string | null;
@@ -82,18 +82,24 @@ function parseCallback(): CallbackResult | null {
 
 function App() {
   const path = window.location.pathname;
-  const [callbackResult, setCallbackResult] = useState<CallbackResult | null>(null);
-  const [exchangeStatus, setExchangeStatus] = useState<ExchangeStatus>('idle');
+  // Lazy init from URL params — no effect needed; URL params don't change after mount
+  const [callbackResult] = useState<CallbackResult | null>(parseCallback);
+  // Derive initial status synchronously — avoids any synchronous setState in effects
+  const [exchangeStatus, setExchangeStatus] = useState<ExchangeStatus>(() => {
+    const cb = parseCallback();
+    if (!cb?.code) return 'idle';
+    const valid =
+      cb.returnedState !== null &&
+      cb.savedState !== null &&
+      cb.returnedState === cb.savedState;
+    return valid ? 'loading' : 'skipped';
+  });
   const [tokenResult, setTokenResult] = useState<TokenExchangeResult | null>(null);
 
   const [title, setTitle] = useState(DEFAULT_TITLE);
   const [consent, setConsent] = useState(false);
   const [publishState, setPublishState] = useState<PublishStatus>('idle');
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
-
-  useEffect(() => {
-    setCallbackResult(parseCallback());
-  }, []);
 
   useEffect(() => {
     if (!callbackResult?.code) return;
@@ -103,12 +109,8 @@ function App() {
       callbackResult.savedState !== null &&
       callbackResult.returnedState === callbackResult.savedState;
 
-    if (!stateValid) {
-      setExchangeStatus('skipped');
-      return;
-    }
+    if (!stateValid) return;
 
-    setExchangeStatus('loading');
     fetch(EDGE_FUNCTION_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -453,7 +455,7 @@ function App() {
       </section>
 
       <section className="card tt-section tt-publish-section">
-        <h2>TikTok Demo Publish Flow</h2>
+        <h2>TikTok Inbox Upload Test</h2>
 
         <div className="tt-meta-row">
           <span className="tt-label">Test video</span>
@@ -468,7 +470,7 @@ function App() {
         </div>
 
         <div className="tt-field-row">
-          <label className="tt-label" htmlFor="publish-title">Title / Caption</label>
+          <label className="tt-label" htmlFor="publish-title">Upload title</label>
           <input
             id="publish-title"
             className="tt-input"
@@ -480,7 +482,7 @@ function App() {
 
         <div className="tt-meta-row">
           <span className="tt-label">Privacy level</span>
-          <span className="tt-value">SELF_ONLY</span>
+          <span className="tt-value">N/A — set by creator in TikTok inbox</span>
         </div>
 
         <label className="tt-consent">
@@ -489,7 +491,7 @@ function App() {
             checked={consent}
             onChange={(e) => setConsent(e.target.checked)}
           />
-          I confirm that I want to send this video to my connected TikTok account.
+          I confirm that I want to initiate an inbox upload to my connected TikTok account.
         </label>
 
         <div>
@@ -499,17 +501,17 @@ function App() {
             onClick={handlePublish}
             disabled={!consent || publishState === 'loading'}
           >
-            {publishState === 'loading' ? 'Sending…' : 'Send Test Video to TikTok'}
+            {publishState === 'loading' ? 'Uploading…' : 'Send Inbox Upload Test'}
           </button>
         </div>
 
         {publishState !== 'idle' && (
           <div className="tt-exchange">
             <hr className="tt-divider" />
-            <h3>Publish Result</h3>
+            <h3>Inbox Upload Result</h3>
 
             {publishState === 'loading' && (
-              <p className="tt-exchange-loading">Publishing video…</p>
+              <p className="tt-exchange-loading">Uploading video…</p>
             )}
 
             {publishState === 'done' && publishResult && (

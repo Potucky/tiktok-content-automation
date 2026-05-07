@@ -8,7 +8,7 @@
 //   TIKTOK_CLIENT_KEY         — app client_key from TikTok Developer Portal
 //   TIKTOK_CLIENT_SECRET      — never logged, never returned to caller
 //   TIKTOK_REDIRECT_URI       — must exactly match TikTok Developer Portal
-//   ALLOWED_ORIGIN            — frontend origin for CORS
+//   ALLOWED_ORIGIN            — frontend origin for CORS (required — no wildcard fallback)
 //   SUPABASE_URL              — project REST base URL, e.g. https://<ref>.supabase.co
 //   SUPABASE_SERVICE_ROLE_KEY — service role key; used only server-side, never returned
 
@@ -30,7 +30,15 @@ interface TikTokTokenResponse {
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
-  const allowedOrigin = Deno.env.get("ALLOWED_ORIGIN") ?? "*";
+  // ── ALLOWED_ORIGIN is required — no wildcard fallback ──────────────────────
+  const allowedOrigin = Deno.env.get("ALLOWED_ORIGIN");
+  if (!allowedOrigin) {
+    console.error("[tiktok-token-exchange] ALLOWED_ORIGIN is not configured");
+    return new Response(
+      JSON.stringify({ ok: false, error: "Server configuration error" }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
 
   const corsHeaders: Record<string, string> = {
     "Access-Control-Allow-Origin": allowedOrigin,

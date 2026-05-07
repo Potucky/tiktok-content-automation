@@ -8,7 +8,8 @@
 // Required secrets (set via `supabase secrets set`):
 //   SUPABASE_URL              — project REST base URL
 //   SUPABASE_SERVICE_ROLE_KEY — service role key; server-side only, never returned
-//   ALLOWED_ORIGIN            — frontend origin for CORS (optional, defaults to "*")
+//   ALLOWED_ORIGIN            — frontend origin for CORS (required — no wildcard fallback)
+//   TIKTOK_ENV                — must be exactly "sandbox"; function refuses otherwise
 
 const DB_TABLE = "creatorflow_tiktok_connections";
 
@@ -48,7 +49,15 @@ interface TikTokStatusResponse {
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
-  const allowedOrigin = Deno.env.get("ALLOWED_ORIGIN") ?? "*";
+  // ── ALLOWED_ORIGIN is required — no wildcard fallback ──────────────────────
+  const allowedOrigin = Deno.env.get("ALLOWED_ORIGIN");
+  if (!allowedOrigin) {
+    console.error("[tiktok-publish-video] ALLOWED_ORIGIN is not configured");
+    return new Response(
+      JSON.stringify({ ok: false, error: "Server configuration error" }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
 
   const corsHeaders: Record<string, string> = {
     "Access-Control-Allow-Origin": allowedOrigin,
@@ -70,6 +79,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ── Method guard ────────────────────────────────────────────────────────────
   if (req.method !== "POST") {
     return json({ ok: false, error: "Method not allowed" }, 405);
+  }
+
+  // ── Sandbox guard — function must not run outside sandbox environment ───────
+  const tiktokEnv = Deno.env.get("TIKTOK_ENV");
+  if (tiktokEnv !== "sandbox") {
+    console.error(
+      `[tiktok-publish-video] TIKTOK_ENV="${tiktokEnv ?? "(not set)"}" — must be "sandbox"`,
+    );
+    return json({ ok: false, error: "Function is restricted to sandbox environment" }, 403);
   }
 
   // ── Parse body ──────────────────────────────────────────────────────────────
@@ -167,7 +185,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // Ordered by last_token_exchange_at descending so the most recently
   // refreshed token is used.  access_token is read server-side only and is
   // never logged or returned to the caller.
-  let connection: ConnectionRecord | null = null;
+  let connection: ConnectionRecord | null;
   try {
     const dbRes = await fetch(
       `${supabaseUrl}/rest/v1/${DB_TABLE}?order=last_token_exchange_at.desc&limit=1`,
