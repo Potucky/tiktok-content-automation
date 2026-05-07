@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 .env.local
 supabase/.temp/
+
+# Private local account notes
+/account_registry/
