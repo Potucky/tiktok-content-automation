@@ -8,6 +8,8 @@ const EDGE_FUNCTION_URL =
   'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-token-exchange';
 const PUBLISH_URL =
   'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-publish-video';
+const STATUS_CHECK_URL =
+  'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-status-check';
 const TEST_VIDEO_URL =
   'https://potucky.github.io/tiktok-content-automation/test-videos/tiktok-test-upload.mp4';
 const DEFAULT_TITLE = 'TikTok inbox upload test';
@@ -47,8 +49,22 @@ interface PublishResult {
   error?: string;
 }
 
+// Safe fields only — access_token intentionally absent
+interface StatusRefreshResult {
+  ok: boolean;
+  statusCheckOk?: boolean;
+  publishId?: string | null;
+  publishStatus?: string | null;
+  failReason?: string | null;
+  uploadedBytes?: number | null;
+  tikTokErrorCode?: string;
+  tikTokErrorMessage?: string;
+  error?: string;
+}
+
 type ExchangeStatus = 'idle' | 'loading' | 'done' | 'skipped';
 type PublishStatus = 'idle' | 'loading' | 'done';
+type StatusRefreshState = 'idle' | 'loading' | 'done';
 type SheetSyncStatus = 'idle' | 'loading' | 'saved' | 'failed';
 
 function maskKey(key: string): string {
@@ -104,6 +120,9 @@ function App() {
   const [publishState, setPublishState] = useState<PublishStatus>('idle');
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [sheetSyncStatus, setSheetSyncStatus] = useState<SheetSyncStatus>('idle');
+  const [statusRefreshState, setStatusRefreshState] = useState<StatusRefreshState>('idle');
+  const [statusRefreshResult, setStatusRefreshResult] = useState<StatusRefreshResult | null>(null);
+  const [statusRefreshSheetSync, setStatusRefreshSheetSync] = useState<SheetSyncStatus>('idle');
 
   useEffect(() => {
     if (!callbackResult?.code) return;
@@ -145,7 +164,7 @@ function App() {
     window.location.href = buildAuthUrl(clientKey, redirectUri);
   }
 
-  async function logToGoogleSheet(result: PublishResult, videoTitle: string): Promise<boolean> {
+  async function logToGoogleSheet(result: PublishResult, videoTitle: string, notes = ''): Promise<boolean> {
     const now = new Date().toISOString();
     const payload = {
       ok: result.ok ?? null,
@@ -161,7 +180,7 @@ function App() {
       errorMessage: result.error ?? null,
       createdAt: now,
       updatedAt: now,
-      notes: '',
+      notes,
     };
     try {
       const res = await fetch(GOOGLE_SHEET_WEBHOOK_URL, {
@@ -200,12 +219,54 @@ function App() {
     }
     setPublishResult(result);
     setPublishState('done');
+    // Reset any previous refresh when a new upload is done
+    setStatusRefreshState('idle');
+    setStatusRefreshResult(null);
+    setStatusRefreshSheetSync('idle');
 
     // Fire-and-forget: must not block or affect the upload result
     setSheetSyncStatus('loading');
     logToGoogleSheet(result, title)
       .then((synced) => setSheetSyncStatus(synced ? 'saved' : 'failed'))
       .catch(() => setSheetSyncStatus('failed'));
+  }
+
+  async function handleRefreshStatus() {
+    const publishId = publishResult?.publishId;
+    if (!publishId) return;
+
+    setStatusRefreshState('loading');
+    setStatusRefreshResult(null);
+    setStatusRefreshSheetSync('idle');
+
+    let result: StatusRefreshResult = { ok: false };
+    try {
+      const res = await fetch(STATUS_CHECK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publish_id: publishId }),
+      });
+      const data = await res.json();
+      result = data as StatusRefreshResult;
+    } catch {
+      result = { ok: false, error: 'Network error — could not reach status check endpoint.' };
+    }
+    setStatusRefreshResult(result);
+    setStatusRefreshState('done');
+
+    // Fire-and-forget: log refresh result to Google Sheet
+    setStatusRefreshSheetSync('loading');
+    const asPublishResult: PublishResult = {
+      ok: result.ok,
+      publishId: result.publishId,
+      statusCheckOk: result.statusCheckOk,
+      publishStatus: result.publishStatus,
+      uploadedBytes: result.uploadedBytes,
+      error: result.error,
+    };
+    logToGoogleSheet(asPublishResult, title, 'status_refresh')
+      .then((synced) => setStatusRefreshSheetSync(synced ? 'saved' : 'failed'))
+      .catch(() => setStatusRefreshSheetSync('failed'));
   }
 
   if (path.includes('/terms')) {
@@ -626,6 +687,92 @@ function App() {
                 {sheetSyncStatus === 'saved' && 'Google Sheet sync: saved'}
                 {sheetSyncStatus === 'failed' && 'Google Sheet sync: skipped/failed'}
               </p>
+            )}
+
+            {publishState === 'done' && publishResult?.publishId != null && (
+              <>
+                <hr className="tt-divider" />
+                <h3>TikTok Status Refresh</h3>
+
+                <button
+                  type="button"
+                  className="tt-btn-secondary"
+                  onClick={handleRefreshStatus}
+                  disabled={statusRefreshState === 'loading'}
+                >
+                  {statusRefreshState === 'loading' ? 'Checking…' : 'Refresh TikTok Status'}
+                </button>
+
+                {statusRefreshState === 'done' && statusRefreshResult && (
+                  <div className="tt-refresh-result">
+                    <div className="tt-status-row">
+                      <span className="tt-label">ok</span>
+                      <span className={`tt-badge ${statusRefreshResult.ok ? 'tt-ok' : 'tt-fail'}`}>
+                        {String(statusRefreshResult.ok)}
+                      </span>
+                    </div>
+
+                    {statusRefreshResult.publishStatus != null && (
+                      <div className="tt-status-row">
+                        <span className="tt-label">publishStatus</span>
+                        <span className={`tt-badge ${
+                          statusRefreshResult.publishStatus === 'PUBLISH_COMPLETE' ||
+                          statusRefreshResult.publishStatus === 'SEND_TO_USER_INBOX'
+                            ? 'tt-ok'
+                            : statusRefreshResult.publishStatus === 'FAILED'
+                            ? 'tt-fail'
+                            : 'tt-warn'
+                        }`}>
+                          {statusRefreshResult.publishStatus}
+                        </span>
+                      </div>
+                    )}
+
+                    {statusRefreshResult.failReason != null && (
+                      <div className="tt-meta-row">
+                        <span className="tt-label">failReason</span>
+                        <span className="tt-code">{statusRefreshResult.failReason}</span>
+                      </div>
+                    )}
+
+                    {statusRefreshResult.uploadedBytes != null && (
+                      <div className="tt-meta-row">
+                        <span className="tt-label">uploadedBytes</span>
+                        <span className="tt-value">{statusRefreshResult.uploadedBytes.toLocaleString()}</span>
+                      </div>
+                    )}
+
+                    {statusRefreshResult.tikTokErrorCode && (
+                      <div className="tt-meta-row">
+                        <span className="tt-label">tikTokErrorCode</span>
+                        <span className="tt-code">{statusRefreshResult.tikTokErrorCode}</span>
+                      </div>
+                    )}
+
+                    {statusRefreshResult.tikTokErrorMessage && (
+                      <div className="tt-meta-row">
+                        <span className="tt-label">tikTokErrorMessage</span>
+                        <span className="tt-code">{statusRefreshResult.tikTokErrorMessage}</span>
+                      </div>
+                    )}
+
+                    {statusRefreshResult.error && (
+                      <div className="tt-meta-row">
+                        <span className="tt-label">error</span>
+                        <span className="tt-code">{statusRefreshResult.error}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {statusRefreshSheetSync !== 'idle' && (
+                  <p className={`tt-sheet-sync${statusRefreshSheetSync === 'saved' ? ' tt-sheet-sync--ok' : statusRefreshSheetSync === 'failed' ? ' tt-sheet-sync--fail' : ''}`}>
+                    {statusRefreshSheetSync === 'loading' && 'Google Sheet sync: syncing…'}
+                    {statusRefreshSheetSync === 'saved' && 'Google Sheet sync: saved'}
+                    {statusRefreshSheetSync === 'failed' && 'Google Sheet sync: skipped/failed'}
+                  </p>
+                )}
+              </>
             )}
           </div>
         )}
