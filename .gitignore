@@ -27,3 +27,6 @@ supabase/.temp/
 
 # Private local account notes
 /account_registry/
+
+# Claude Code local files
+.claude/
