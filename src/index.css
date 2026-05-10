@@ -235,3 +235,13 @@ code {
   font-size: 0.875rem;
   color: #475569;
 }
+
+.tt-sheet-sync {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  font-family: var(--mono);
+  color: #475569;
+}
+
+.tt-sheet-sync--ok { color: #166534; }
+.tt-sheet-sync--fail { color: #991b1b; }

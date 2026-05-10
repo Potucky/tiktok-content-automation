@@ -11,6 +11,8 @@ const PUBLISH_URL =
 const TEST_VIDEO_URL =
   'https://potucky.github.io/tiktok-content-automation/test-videos/tiktok-test-upload.mp4';
 const DEFAULT_TITLE = 'TikTok inbox upload test';
+const GOOGLE_SHEET_WEBHOOK_URL =
+  'https://script.google.com/macros/s/AKfycbztz1c-8Hy4pk6mQ8CYBWYXCoTPmmcJXnJ77GVk4w8mVs0-Kt2PA_uQ0sN-msEyx73I8w/exec';
 
 interface CallbackResult {
   code: string | null;
@@ -47,6 +49,7 @@ interface PublishResult {
 
 type ExchangeStatus = 'idle' | 'loading' | 'done' | 'skipped';
 type PublishStatus = 'idle' | 'loading' | 'done';
+type SheetSyncStatus = 'idle' | 'loading' | 'saved' | 'failed';
 
 function maskKey(key: string): string {
   if (key.length <= 6) return '*'.repeat(key.length);
@@ -100,6 +103,7 @@ function App() {
   const [consent, setConsent] = useState(false);
   const [publishState, setPublishState] = useState<PublishStatus>('idle');
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
+  const [sheetSyncStatus, setSheetSyncStatus] = useState<SheetSyncStatus>('idle');
 
   useEffect(() => {
     if (!callbackResult?.code) return;
@@ -141,9 +145,41 @@ function App() {
     window.location.href = buildAuthUrl(clientKey, redirectUri);
   }
 
+  async function logToGoogleSheet(result: PublishResult, videoTitle: string): Promise<boolean> {
+    const now = new Date().toISOString();
+    const payload = {
+      ok: result.ok ?? null,
+      binaryUploadOk: result.binaryUploadOk ?? null,
+      binaryUploadStatus: result.binaryUploadStatus ?? null,
+      statusCheckOk: result.statusCheckOk ?? null,
+      publishStatus: result.publishStatus ?? null,
+      videoTitle,
+      publishId: result.publishId ?? null,
+      uploadedBytes: result.uploadedBytes ?? null,
+      environment: 'sandbox',
+      videoUrl: TEST_VIDEO_URL,
+      errorMessage: result.error ?? null,
+      createdAt: now,
+      updatedAt: now,
+      notes: '',
+    };
+    try {
+      const res = await fetch(GOOGLE_SHEET_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
   async function handlePublish() {
     setPublishState('loading');
     setPublishResult(null);
+    setSheetSyncStatus('idle');
+    let result: PublishResult = { ok: false };
     try {
       const res = await fetch(PUBLISH_URL, {
         method: 'POST',
@@ -158,12 +194,18 @@ function App() {
         }),
       });
       const data = await res.json();
-      setPublishResult(data as PublishResult);
+      result = data as PublishResult;
     } catch {
-      setPublishResult({ ok: false, error: 'Network error — could not reach publish endpoint.' });
-    } finally {
-      setPublishState('done');
+      result = { ok: false, error: 'Network error — could not reach publish endpoint.' };
     }
+    setPublishResult(result);
+    setPublishState('done');
+
+    // Fire-and-forget: must not block or affect the upload result
+    setSheetSyncStatus('loading');
+    logToGoogleSheet(result, title)
+      .then((synced) => setSheetSyncStatus(synced ? 'saved' : 'failed'))
+      .catch(() => setSheetSyncStatus('failed'));
   }
 
   if (path.includes('/terms')) {
@@ -576,6 +618,14 @@ function App() {
                   </div>
                 )}
               </>
+            )}
+
+            {sheetSyncStatus !== 'idle' && (
+              <p className={`tt-sheet-sync${sheetSyncStatus === 'saved' ? ' tt-sheet-sync--ok' : sheetSyncStatus === 'failed' ? ' tt-sheet-sync--fail' : ''}`}>
+                {sheetSyncStatus === 'loading' && 'Google Sheet sync: syncing…'}
+                {sheetSyncStatus === 'saved' && 'Google Sheet sync: saved'}
+                {sheetSyncStatus === 'failed' && 'Google Sheet sync: skipped/failed'}
+              </p>
             )}
           </div>
         )}
