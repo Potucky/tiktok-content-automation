@@ -11,7 +11,7 @@ const PUBLISH_URL =
 const STATUS_CHECK_URL =
   'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-status-check';
 const TEST_VIDEO_URL =
-  'https://potucky.github.io/tiktok-content-automation/test-videos/tiktok-test-upload.mp4';
+  'https://potucky.github.io/tiktok-content-automation/test-videos/tiktok-sandbox-tiny-test.mp4';
 const DEFAULT_TITLE = 'TikTok inbox upload test';
 const GOOGLE_SHEET_WEBHOOK_URL =
   'https://script.google.com/macros/s/AKfycbztz1c-8Hy4pk6mQ8CYBWYXCoTPmmcJXnJ77GVk4w8mVs0-Kt2PA_uQ0sN-msEyx73I8w/exec';
