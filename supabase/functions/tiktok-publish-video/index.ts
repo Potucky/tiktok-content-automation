@@ -19,7 +19,15 @@ interface ConnectionRecord {
   open_id?: string;
   access_token?: string;
   refresh_token?: string;
+  scope?: string;
+  last_token_exchange_at?: string;
   [key: string]: unknown;
+}
+
+function maskOpenId(openId?: string): string | null {
+  if (!openId) return null;
+  if (openId.length <= 10) return openId.slice(0, 3) + "...";
+  return openId.slice(0, 6) + "..." + openId.slice(-4);
 }
 
 interface TikTokInitResponse {
@@ -266,6 +274,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     connectionFound,
     tokenAvailable,
     openIdPresent,
+    connectionOpenIdMasked: maskOpenId(connection!.open_id),
+    ...(connection!.scope != null && { connectionScope: connection!.scope }),
+    ...(connection!.last_token_exchange_at != null && { connectionLastTokenExchangeAt: connection!.last_token_exchange_at }),
     ...(videoUrl !== undefined && { requestedVideoUrl: videoUrl }),
     requestedTitle: title,
     ...(privacyLevel !== undefined && { requestedPrivacyLevel: privacyLevel }),

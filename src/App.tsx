@@ -47,6 +47,12 @@ interface PublishResult {
   publishStatus?: string | null;
   uploadedBytes?: number | null;
   error?: string;
+  connectionOpenIdMasked?: string | null;
+  connectionScope?: string | null;
+  connectionLastTokenExchangeAt?: string | null;
+  connectionFound?: boolean | null;
+  tokenAvailable?: boolean | null;
+  openIdPresent?: boolean | null;
 }
 
 // Safe fields only — access_token intentionally absent
@@ -60,6 +66,12 @@ interface StatusRefreshResult {
   tikTokErrorCode?: string;
   tikTokErrorMessage?: string;
   error?: string;
+  connectionOpenIdMasked?: string | null;
+  connectionScope?: string | null;
+  connectionLastTokenExchangeAt?: string | null;
+  connectionFound?: boolean | null;
+  tokenAvailable?: boolean | null;
+  openIdPresent?: boolean | null;
 }
 
 type ExchangeStatus = 'idle' | 'loading' | 'done' | 'skipped';
@@ -178,6 +190,12 @@ function App() {
       environment: 'sandbox',
       videoUrl: TEST_VIDEO_URL,
       errorMessage: result.error ?? null,
+      connectionOpenIdMasked: result.connectionOpenIdMasked ?? null,
+      connectionScope: result.connectionScope ?? null,
+      connectionLastTokenExchangeAt: result.connectionLastTokenExchangeAt ?? null,
+      connectionFound: result.connectionFound ?? null,
+      tokenAvailable: result.tokenAvailable ?? null,
+      openIdPresent: result.openIdPresent ?? null,
       createdAt: now,
       updatedAt: now,
       notes,
@@ -263,6 +281,12 @@ function App() {
       publishStatus: result.publishStatus,
       uploadedBytes: result.uploadedBytes,
       error: result.error,
+      connectionOpenIdMasked: result.connectionOpenIdMasked,
+      connectionScope: result.connectionScope,
+      connectionLastTokenExchangeAt: result.connectionLastTokenExchangeAt,
+      connectionFound: result.connectionFound,
+      tokenAvailable: result.tokenAvailable,
+      openIdPresent: result.openIdPresent,
     };
     logToGoogleSheet(asPublishResult, title, 'status_refresh')
       .then((synced) => setStatusRefreshSheetSync(synced ? 'saved' : 'failed'))
