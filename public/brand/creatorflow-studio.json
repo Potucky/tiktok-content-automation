@@ -17,7 +17,6 @@
   "plannedProduct": "Content Posting API",
   "plannedScopes": [
     "user.info.basic",
-    "video.upload",
-    "video.publish"
+    "video.upload"
   ]
 }

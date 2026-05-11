@@ -355,12 +355,10 @@ function App() {
   return (
     <main className="page">
       <section className="hero">
-        <div className="badge">Creator API Tool</div>
         <h1>CreatorFlow Studio</h1>
         <p>
-          A creator tool for preparing, uploading, and publishing short-form video
-          content to the owner's connected creator account using the official TikTok Content
-          Posting API.
+          A creator tool for preparing and sending user-approved short-form videos to the
+          connected TikTok account using TikTok's official Content Posting API.
         </p>
 
         <div className="links">
