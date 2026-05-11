@@ -12,7 +12,7 @@ const STATUS_CHECK_URL =
   'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-status-check';
 const TEST_VIDEO_URL =
   'https://potucky.github.io/tiktok-content-automation/test-videos/tiktok-sandbox-tiny-test.mp4';
-const DEFAULT_TITLE = 'TikTok inbox upload test';
+const DEFAULT_TITLE = 'Creator video upload';
 const GOOGLE_SHEET_WEBHOOK_URL =
   'https://script.google.com/macros/s/AKfycbztz1c-8Hy4pk6mQ8CYBWYXCoTPmmcJXnJ77GVk4w8mVs0-Kt2PA_uQ0sN-msEyx73I8w/exec';
 
@@ -78,11 +78,6 @@ type ExchangeStatus = 'idle' | 'loading' | 'done' | 'skipped';
 type PublishStatus = 'idle' | 'loading' | 'done';
 type StatusRefreshState = 'idle' | 'loading' | 'done';
 type SheetSyncStatus = 'idle' | 'loading' | 'saved' | 'failed';
-
-function maskKey(key: string): string {
-  if (key.length <= 6) return '*'.repeat(key.length);
-  return `${key.slice(0, 6)}${'*'.repeat(key.length - 6)}`;
-}
 
 function buildAuthUrl(clientKey: string, redirectUri: string): string {
   const state = crypto.randomUUID();
@@ -294,6 +289,7 @@ function App() {
   }
 
   if (path.includes('/terms')) {
+    document.title = 'CreatorFlow Studio | Terms';
     return (
       <main className="page">
         <section className="card">
@@ -303,8 +299,9 @@ function App() {
           <h2>Purpose</h2>
           <p>
             CreatorFlow Studio is a creator tool intended to help the account
-            owner prepare, upload, and publish short-form video content to their own
-            TikTok account using supported content posting APIs.
+            owner connect their own TikTok account, review their creator-owned videos,
+            and send them to TikTok for publishing through TikTok's official Content
+            Posting API.
           </p>
 
           <h2>Authorized Use</h2>
@@ -333,6 +330,7 @@ function App() {
   }
 
   if (path.includes('/privacy')) {
+    document.title = 'CreatorFlow Studio | Privacy';
     return (
       <main className="page">
         <section className="card">
@@ -341,9 +339,9 @@ function App() {
 
           <h2>Overview</h2>
           <p>
-            CreatorFlow Studio is a creator tool used to help the account owner
-            prepare, upload, and publish short-form video content to their connected creator
-            account using supported content posting APIs.
+            CreatorFlow Studio is a creator tool that helps the account owner connect
+            their own TikTok account and send creator-owned short-form videos to TikTok
+            for review and publishing through TikTok's official Content Posting API.
           </p>
 
           <h2>Information We May Access</h2>
@@ -376,13 +374,15 @@ function App() {
     );
   }
 
+  document.title = 'CreatorFlow Studio';
   return (
     <main className="page">
       <section className="hero">
         <h1>CreatorFlow Studio</h1>
         <p>
-          A creator tool for preparing and sending user-approved short-form videos to the
-          connected TikTok account using TikTok's official Content Posting API.
+          CreatorFlow Studio helps you connect your own TikTok account and send your
+          creator-owned short-form videos to TikTok for review and publishing through
+          TikTok's official Content Posting API.
         </p>
 
         <div className="links">
@@ -392,36 +392,22 @@ function App() {
       </section>
 
       <section className="card">
-        <h2>What this app does</h2>
+        <h2>What CreatorFlow Studio does</h2>
         <p>
-          This app is designed for the account owner's own content workflow. It does
-          not perform scraping, follower automation, mass liking, mass commenting,
-          artificial engagement, or unauthorized posting.
+          CreatorFlow Studio is built for the account owner's own content workflow. It
+          lets you review and send your own creator-owned videos to TikTok through
+          TikTok's official Content Posting API. It does not perform scraping, follower
+          automation, mass liking, mass commenting, artificial engagement, or
+          unauthorized posting.
         </p>
       </section>
 
       <section className="card tt-section">
-        <h2>TikTok Sandbox Connection</h2>
+        <h2>TikTok Account Connection</h2>
 
         <div className="tt-meta-row">
-          <span className="tt-label">Redirect URI</span>
-          <span className="tt-value">
-            {redirectUri ?? <span className="tt-missing">VITE_TIKTOK_REDIRECT_URI not set</span>}
-          </span>
-        </div>
-
-        <div className="tt-meta-row">
-          <span className="tt-label">Client key</span>
-          <span className="tt-value">
-            {clientKey
-              ? maskKey(clientKey)
-              : <span className="tt-missing">VITE_TIKTOK_CLIENT_KEY not set</span>}
-          </span>
-        </div>
-
-        <div className="tt-meta-row">
-          <span className="tt-label">Scope</span>
-          <span className="tt-value">{SCOPE}</span>
+          <span className="tt-label">Permissions</span>
+          <span className="tt-value">Basic account info · video upload</span>
         </div>
 
         <button
@@ -430,12 +416,12 @@ function App() {
           onClick={handleConnect}
           disabled={missingConfig}
         >
-          Connect TikTok Sandbox
+          Connect TikTok Account
         </button>
 
         <p className="tt-warning">
-          <strong>Security notice:</strong> Token exchange must be handled by a secure backend.
-          Do not expose Client Secret in the browser.
+          <strong>Privacy note:</strong> CreatorFlow Studio connects securely to TikTok.
+          Your account credentials are never stored in your browser.
         </p>
 
         {callbackResult && (
@@ -482,8 +468,8 @@ function App() {
             )}
 
             <p className="tt-warning tt-warning--callback">
-              <strong>Next step (backend only):</strong> Token exchange must be handled by a
-              secure backend. Do not expose Client Secret in the browser.
+              <strong>Connecting securely:</strong> Your account is being authorized
+              via TikTok's official OAuth flow.
             </p>
           </div>
         )}
@@ -580,7 +566,7 @@ function App() {
       </section>
 
       <section className="card tt-section tt-publish-section">
-        <h2>TikTok Inbox Upload Test</h2>
+        <h2>Send Video to TikTok</h2>
 
         <div className="tt-meta-row">
           <span className="tt-label">Test video</span>
@@ -626,7 +612,7 @@ function App() {
             onClick={handlePublish}
             disabled={!consent || publishState === 'loading'}
           >
-            {publishState === 'loading' ? 'Uploading…' : 'Send Inbox Upload Test'}
+            {publishState === 'loading' ? 'Uploading…' : 'Send to My TikTok Inbox'}
           </button>
         </div>
 
