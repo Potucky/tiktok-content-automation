@@ -13,7 +13,7 @@
 //   SUPABASE_URL              — project REST base URL
 //   SUPABASE_SERVICE_ROLE_KEY — service role key; server-side only
 //   ALLOWED_ORIGIN            — frontend origin for CORS (required — no wildcard fallback)
-//   TIKTOK_ENV                — must be exactly "sandbox"
+//   TIKTOK_ENV                — must be exactly "production"
 
 const DB_TABLE = "creatorflow_tiktok_connections";
 
@@ -76,11 +76,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const tiktokEnv = Deno.env.get("TIKTOK_ENV");
-  if (tiktokEnv !== "sandbox") {
+  if (tiktokEnv !== "production") {
     console.error(
-      `[tiktok-status-check] TIKTOK_ENV="${tiktokEnv ?? "(not set)"}" — must be "sandbox"`,
+      `[tiktok-status-check] TIKTOK_ENV="${tiktokEnv ?? "(not set)"}" — must be "production"`,
     );
-    return json({ ok: false, error: "Function is restricted to sandbox environment" }, 403);
+    return json({ ok: false, error: "Function is restricted to production environment" }, 403);
   }
 
   let publishId: string;

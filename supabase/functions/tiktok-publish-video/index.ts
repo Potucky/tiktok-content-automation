@@ -1,6 +1,6 @@
 // tiktok-publish-video — Supabase Edge Function
 //
-// Initiates a TikTok Content Posting API inbox upload.
+// Initiates a TikTok Direct Post (video.publish scope).
 // Supports PULL_FROM_URL (default) and FILE_UPLOAD modes.
 // FILE_UPLOAD supports optional server-side binary upload (upload_binary: true).
 // Tokens and upload_url are NEVER returned to the browser or written to logs.
@@ -15,7 +15,7 @@
 //   SUPABASE_URL              — project REST base URL
 //   SUPABASE_SERVICE_ROLE_KEY — service role key; server-side only, never returned
 //   ALLOWED_ORIGIN            — frontend origin for CORS (required — no wildcard fallback)
-//   TIKTOK_ENV                — must be exactly "sandbox"; function refuses otherwise
+//   TIKTOK_ENV                — must be exactly "production"; function refuses otherwise
 
 const DB_TABLE = "creatorflow_tiktok_connections";
 
@@ -95,13 +95,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: false, error: "Method not allowed" }, 405);
   }
 
-  // ── Sandbox guard — function must not run outside sandbox environment ───────
+  // ── Production guard — function must not run outside production environment ──
   const tiktokEnv = Deno.env.get("TIKTOK_ENV");
-  if (tiktokEnv !== "sandbox") {
+  if (tiktokEnv !== "production") {
     console.error(
-      `[tiktok-publish-video] TIKTOK_ENV="${tiktokEnv ?? "(not set)"}" — must be "sandbox"`,
+      `[tiktok-publish-video] TIKTOK_ENV="${tiktokEnv ?? "(not set)"}" — must be "production"`,
     );
-    return json({ ok: false, error: "Function is restricted to sandbox environment" }, 403);
+    return json({ ok: false, error: "Function is restricted to production environment" }, 403);
   }
 
   // ── Parse body ──────────────────────────────────────────────────────────────
@@ -304,23 +304,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
     ...(totalChunkCount !== undefined && { totalChunkCount }),
   };
 
-  // ── Call TikTok Content Posting API — inbox upload init ───────────────────
+  // ── Call TikTok Direct Post API — production publish init ─────────────────
   // access_token is used here server-side only; never logged, never returned.
+  // post_info is required by the direct post endpoint (video.publish scope).
+  const postInfo = {
+    title: title!,
+    privacy_level: privacyLevel ?? "SELF_ONLY",
+  };
+
+  console.log("[tiktok-publish-video] endpoint=direct_post privacy_level=" + postInfo.privacy_level);
+
   let tikTokData: TikTokInitResponse;
   try {
     const tikTokRes = await fetch(
-      "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/",
+      "https://open.tiktokapis.com/v2/post/publish/video/init/",
       {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${connection!.access_token}`,
           "Content-Type": "application/json; charset=UTF-8",
         },
-        body: JSON.stringify({ source_info: sourceInfo }),
+        body: JSON.stringify({ post_info: postInfo, source_info: sourceInfo }),
       },
     );
 
     tikTokData = (await tikTokRes.json()) as TikTokInitResponse;
+
+    console.log(
+      `[tiktok-publish-video] init status=${tikTokRes.status} publish_id_present=${!!tikTokData.data?.publish_id} upload_url_present=${!!tikTokData.data?.upload_url}`,
+    );
 
     if (!tikTokRes.ok) {
       console.error(
