@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import './App.css';
 
 const TIKTOK_AUTH_BASE = 'https://www.tiktok.com/v2/auth/authorize/';
-const SCOPE = 'user.info.basic,video.upload';
+const SCOPE = 'user.info.basic,video.upload,video.publish';
 const SESSION_STATE_KEY = 'tiktok_oauth_state';
 const EDGE_FUNCTION_URL =
   'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-token-exchange';
@@ -79,6 +79,11 @@ type ExchangeStatus = 'idle' | 'loading' | 'done' | 'skipped';
 type PublishStatus = 'idle' | 'loading' | 'done';
 type StatusRefreshState = 'idle' | 'loading' | 'done';
 type SheetSyncStatus = 'idle' | 'loading' | 'saved' | 'failed';
+
+function maskClientKey(key: string): string {
+  if (key.length <= 8) return key.slice(0, 2) + '...' + key.slice(-2);
+  return key.slice(0, 4) + '...' + key.slice(-4);
+}
 
 function buildAuthUrl(clientKey: string, redirectUri: string): string {
   const state = crypto.randomUUID();
@@ -194,7 +199,7 @@ function App() {
       videoTitle,
       publishId: result.publishId ?? null,
       uploadedBytes: result.uploadedBytes ?? null,
-      environment: 'sandbox',
+      environment: 'production',
       videoUrl: TEST_VIDEO_URL,
       errorMessage: result.error ?? null,
       connectionOpenIdMasked: result.connectionOpenIdMasked ?? null,
@@ -444,7 +449,7 @@ function App() {
         </div>
         <div className="tt-meta-row">
           <span className="tt-label">Permissions</span>
-          <span className="tt-value">user.info.basic · video.upload</span>
+          <span className="tt-value">user.info.basic · video.upload · video.publish</span>
         </div>
 
         <hr className="tt-divider" />
@@ -461,26 +466,26 @@ function App() {
 
         <hr className="tt-divider" />
 
-        <h3 className="demo-sub">Step 3 — Send to TikTok Inbox</h3>
+        <h3 className="demo-sub">Step 3 — Publish to TikTok</h3>
         <button
           type="button"
           className="tt-btn"
           onClick={handleDemoSend}
           disabled={demoState === 'loading' || demoState === 'success'}
         >
-          {demoState === 'loading' ? 'Sending…' : 'Send demo video to TikTok Inbox'}
+          {demoState === 'loading' ? 'Sending…' : 'Send demo video to TikTok'}
         </button>
 
         {demoState === 'loading' && (
           <p className="tt-exchange-loading demo-loading">
-            Uploading video to TikTok inbox…
+            Uploading video to TikTok…
           </p>
         )}
 
         {demoState === 'success' && (
           <>
             <div className="demo-success">
-              Demo mode: video sent to TikTok inbox successfully.
+              Demo mode: video sent to TikTok successfully.
             </div>
             <button
               type="button"
@@ -514,8 +519,25 @@ function App() {
 
         <div className="tt-meta-row">
           <span className="tt-label">Permissions</span>
-          <span className="tt-value">Basic account info · video upload</span>
+          <span className="tt-value">Basic account info · video upload · video publish</span>
         </div>
+
+        {clientKey && redirectUri && (
+          <>
+            <div className="tt-meta-row">
+              <span className="tt-label">Scope</span>
+              <span className="tt-code">{SCOPE}</span>
+            </div>
+            <div className="tt-meta-row">
+              <span className="tt-label">Redirect URI</span>
+              <span className="tt-code">{redirectUri}</span>
+            </div>
+            <div className="tt-meta-row">
+              <span className="tt-label">Client key</span>
+              <span className="tt-code">{maskClientKey(clientKey)}</span>
+            </div>
+          </>
+        )}
 
         <button
           type="button"
@@ -697,7 +719,7 @@ function App() {
 
         <div className="tt-meta-row">
           <span className="tt-label">Privacy level</span>
-          <span className="tt-value">N/A — set by creator in TikTok inbox</span>
+          <span className="tt-value">SELF_ONLY</span>
         </div>
 
         <label className="tt-consent">
@@ -706,7 +728,7 @@ function App() {
             checked={consent}
             onChange={(e) => setConsent(e.target.checked)}
           />
-          I confirm that I want to initiate an inbox upload to my connected TikTok account.
+          I confirm that I want to publish a video to my connected TikTok account.
         </label>
 
         <div>
@@ -716,17 +738,17 @@ function App() {
             onClick={handlePublish}
             disabled={!consent || publishState === 'loading'}
           >
-            {publishState === 'loading' ? 'Uploading…' : 'Send to My TikTok Inbox'}
+            {publishState === 'loading' ? 'Publishing…' : 'Publish to TikTok'}
           </button>
         </div>
 
         {publishState !== 'idle' && (
           <div className="tt-exchange">
             <hr className="tt-divider" />
-            <h3>Inbox Upload Result</h3>
+            <h3>Direct Post Result</h3>
 
             {publishState === 'loading' && (
-              <p className="tt-exchange-loading">Uploading video…</p>
+              <p className="tt-exchange-loading">Publishing video…</p>
             )}
 
             {publishState === 'done' && publishResult && (
