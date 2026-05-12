@@ -131,6 +131,7 @@ function App() {
   const [statusRefreshState, setStatusRefreshState] = useState<StatusRefreshState>('idle');
   const [statusRefreshResult, setStatusRefreshResult] = useState<StatusRefreshResult | null>(null);
   const [statusRefreshSheetSync, setStatusRefreshSheetSync] = useState<SheetSyncStatus>('idle');
+  const [demoState, setDemoState] = useState<'idle' | 'loading' | 'success'>('idle');
 
   useEffect(() => {
     if (path.includes('/terms')) {
@@ -303,10 +304,21 @@ function App() {
       .catch(() => setStatusRefreshSheetSync('failed'));
   }
 
+  async function handleDemoSend() {
+    setDemoState('loading');
+    await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+    setDemoState('success');
+  }
+
   if (path.includes('/terms')) {
     return (
       <main className="page">
         <section className="card">
+          <div className="page-header-row">
+            <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="CreatorFlow Studio" className="app-icon" />
+            <span className="brand-name">CreatorFlow Studio</span>
+          </div>
+          <hr className="brand-divider" />
           <h1>Terms of Service</h1>
           <p className="muted">Last updated: May 4, 2026</p>
 
@@ -347,6 +359,11 @@ function App() {
     return (
       <main className="page">
         <section className="card">
+          <div className="page-header-row">
+            <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="CreatorFlow Studio" className="app-icon" />
+            <span className="brand-name">CreatorFlow Studio</span>
+          </div>
+          <hr className="brand-divider" />
           <h1>Privacy Policy</h1>
           <p className="muted">Last updated: May 4, 2026</p>
 
@@ -390,7 +407,10 @@ function App() {
   return (
     <main className="page">
       <section className="hero">
-        <h1>CreatorFlow Studio</h1>
+        <div className="app-header-row">
+          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="CreatorFlow Studio" className="app-icon" />
+          <h1>CreatorFlow Studio</h1>
+        </div>
         <p>
           CreatorFlow Studio helps you connect your own TikTok account and send your
           creator-owned short-form videos to TikTok for review and publishing through
@@ -401,6 +421,81 @@ function App() {
           <a href={`${import.meta.env.BASE_URL}terms/`}>Terms of Service</a>
           <a href={`${import.meta.env.BASE_URL}privacy/`}>Privacy Policy</a>
         </div>
+      </section>
+
+      <section className="card tt-section demo-section">
+        <div className="demo-badge">Review Demo Mode</div>
+        <h2>TikTok Integration Demo</h2>
+        <p className="demo-desc">
+          This section demonstrates the complete TikTok Content Posting API user flow for review purposes.
+        </p>
+
+        <hr className="tt-divider" />
+
+        <h3 className="demo-sub">Step 1 — TikTok Connection</h3>
+        <div className="demo-connection">
+          <span className="demo-connected-dot" />
+          <strong>TikTok Connected</strong>
+          <span className="tt-badge tt-ok">demo</span>
+        </div>
+        <div className="tt-meta-row">
+          <span className="tt-label">Account</span>
+          <span className="tt-value">@creatorflow_demo</span>
+        </div>
+        <div className="tt-meta-row">
+          <span className="tt-label">Permissions</span>
+          <span className="tt-value">user.info.basic · video.upload</span>
+        </div>
+
+        <hr className="tt-divider" />
+
+        <h3 className="demo-sub">Step 2 — Demo Video</h3>
+        <div className="demo-video-card">
+          <video
+            src={`${import.meta.env.BASE_URL}test-videos/tiktok-sandbox-tiny-test.mp4`}
+            controls
+            className="demo-video"
+          />
+          <p className="demo-video-name">tiktok-sandbox-tiny-test.mp4</p>
+        </div>
+
+        <hr className="tt-divider" />
+
+        <h3 className="demo-sub">Step 3 — Send to TikTok Inbox</h3>
+        <button
+          type="button"
+          className="tt-btn"
+          onClick={handleDemoSend}
+          disabled={demoState === 'loading' || demoState === 'success'}
+        >
+          {demoState === 'loading' ? 'Sending…' : 'Send demo video to TikTok Inbox'}
+        </button>
+
+        {demoState === 'loading' && (
+          <p className="tt-exchange-loading demo-loading">
+            Uploading video to TikTok inbox…
+          </p>
+        )}
+
+        {demoState === 'success' && (
+          <>
+            <div className="demo-success">
+              Demo mode: video sent to TikTok inbox successfully.
+            </div>
+            <button
+              type="button"
+              className="demo-reset"
+              onClick={() => setDemoState('idle')}
+            >
+              Reset demo
+            </button>
+          </>
+        )}
+
+        <p className="demo-note">
+          This review demo shows the intended Content Posting API user flow. In production, the upload
+          is handled through TikTok's official API and may process asynchronously.
+        </p>
       </section>
 
       <section className="card">
