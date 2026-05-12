@@ -452,11 +452,11 @@ function App() {
         <h3 className="demo-sub">Step 2 — Demo Video</h3>
         <div className="demo-video-card">
           <video
-            src={`${import.meta.env.BASE_URL}test-videos/tiktok-sandbox-tiny-test.mp4`}
+            src={`${import.meta.env.BASE_URL}test-videos/creatorflow-review-demo.mp4`}
             controls
             className="demo-video"
           />
-          <p className="demo-video-name">tiktok-sandbox-tiny-test.mp4</p>
+          <p className="demo-video-name">creatorflow-review-demo.mp4</p>
         </div>
 
         <hr className="tt-divider" />
