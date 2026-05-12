@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import './App.css';
 
 const TIKTOK_AUTH_BASE = 'https://www.tiktok.com/v2/auth/authorize/';
-const SCOPE = 'user.info.basic,video.upload,video.publish';
+const SCOPE = 'user.info.basic';
 const SESSION_STATE_KEY = 'tiktok_oauth_state';
 const EDGE_FUNCTION_URL =
   'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-token-exchange';
