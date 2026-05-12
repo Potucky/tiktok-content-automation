@@ -3,6 +3,12 @@
 // Fetches TikTok publish status for a given publishId using the stored access token.
 // access_token is used server-side only; never logged, never returned to the caller.
 //
+// SECURITY: caller must supply open_id in the request body. The DB lookup is
+// filtered to that specific connection. Falling back to the latest connection
+// is intentionally not supported — a missing open_id returns HTTP 400.
+// Follow-up required: tiktok-token-exchange must return open_id in its
+// response so the frontend can supply it here.
+//
 // Required secrets (shared with tiktok-publish-video):
 //   SUPABASE_URL              — project REST base URL
 //   SUPABASE_SERVICE_ROLE_KEY — service role key; server-side only
@@ -78,11 +84,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   let publishId: string;
+  let requestOpenId: string | undefined;
   try {
-    const body = (await req.json()) as { publish_id?: string };
+    const body = (await req.json()) as { open_id?: string; publish_id?: string };
+    if (!body.open_id) {
+      return json(
+        {
+          ok: false,
+          error: "Missing required field: open_id. Caller must supply the open_id from the token exchange response.",
+        },
+        400,
+      );
+    }
     if (!body.publish_id) {
       return json({ ok: false, error: "Missing required field: publish_id" }, 400);
     }
+    requestOpenId = body.open_id;
     publishId = body.publish_id;
   } catch {
     return json({ ok: false, error: "Invalid JSON body" }, 400);
@@ -102,7 +119,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let connection: ConnectionRecord | null;
   try {
     const dbRes = await fetch(
-      `${supabaseUrl}/rest/v1/${DB_TABLE}?order=last_token_exchange_at.desc&limit=1`,
+      `${supabaseUrl}/rest/v1/${DB_TABLE}?open_id=eq.${encodeURIComponent(requestOpenId!)}&limit=1`,
       {
         headers: {
           "apikey": serviceRoleKey,

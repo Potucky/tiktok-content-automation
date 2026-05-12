@@ -15,6 +15,7 @@ Content Posting API
 Do not add unnecessary products.
 
 Avoid:
+
 - Login Kit unless required by Content Posting API OAuth flow
 - Share Kit
 - Display API
@@ -23,26 +24,23 @@ Avoid:
 
 ## Step 3 — Add Scopes
 
-Try to add:
+Current approved scopes:
 
 user.info.basic
 video.upload
-video.publish
 
-If video.publish is not available, start with:
-
-user.info.basic
-video.upload
+Note: video.publish was not added. Videos are sent to the creator's TikTok
+inbox for review, not directly published. Direct Post is disabled.
 
 ## Step 4 — Configure Web / Redirect URI
 
-Expected redirect URI for future local testing:
+Configured redirect URI (GitHub Pages):
 
-http://localhost:5173/auth/tiktok/callback
+<https://potucky.github.io/creatorflow-studio/>
 
-Expected redirect URI for GitHub Pages / production-like testing:
+For local testing, register a separate redirect URI:
 
-https://potucky.github.io/tiktok-content-automation/auth/tiktok/callback
+<http://localhost:5173/>
 
 Important:
 Do not expose client_secret in frontend code.

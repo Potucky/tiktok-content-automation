@@ -1,73 +1,57 @@
-# React + TypeScript + Vite
+# CreatorFlow Studio
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A creator tool for managing short-form video publishing workflows through TikTok's official Content Posting API.
 
-Currently, two official plugins are available:
+## What it does
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+CreatorFlow Studio lets the authorized account owner connect their own TikTok account and send creator-owned short-form videos to TikTok for review and publishing through TikTok's official Content Posting API.
 
-## React Compiler
+The app does **not** perform scraping, follower automation, mass liking, mass commenting, artificial engagement, or unauthorized posting.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Official URLs
 
-## Expanding the ESLint configuration
+| Page | URL |
+| --- | --- |
+| Public site | <https://potucky.github.io/creatorflow-studio/> |
+| Terms of Service | <https://potucky.github.io/creatorflow-studio/terms/> |
+| Privacy Policy | <https://potucky.github.io/creatorflow-studio/privacy/> |
+| Redirect URI | <https://potucky.github.io/creatorflow-studio/> |
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## TikTok integration
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- **API**: TikTok Content Posting API (inbox upload)
+- **OAuth scopes**: `user.info.basic`, `video.upload`
+- **Direct Post**: disabled — videos are sent to the creator's TikTok inbox for review, not auto-published
+- **Tokens**: stored server-side in Supabase only; never returned to the browser
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Sandbox status
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Current blocker: `FILE_UPLOAD` mode returns HTTP 201 and a `publish_id`, but publish status remains `PROCESSING_UPLOAD`. Under investigation.
+
+## Production review
+
+The TikTok app is currently submitted for production review. Do not recall the review or change production app settings, scopes, URLs, or products while the review is pending.
+
+## Stack
+
+- React + TypeScript + Vite (frontend, GitHub Pages)
+- Supabase Edge Functions (token exchange, publish, status check)
+- TikTok Content Posting API v2
+
+## Environment variables
+
+Create a `.env.local` file in the project root (never commit real values):
+
+```env
+VITE_TIKTOK_CLIENT_KEY=your_client_key_here
+VITE_TIKTOK_REDIRECT_URI=https://potucky.github.io/creatorflow-studio/
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Supabase Edge Function secrets are set via `supabase secrets set` — see [SANDBOX_CHECKLIST.md](SANDBOX_CHECKLIST.md) for the full list.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Security
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- `client_secret` is server-side only; never in frontend code or logs
+- `access_token` and `refresh_token` are stored in Supabase and never returned to the browser
+- `SUPABASE_SERVICE_ROLE_KEY` is server-side only
+- No real secrets in `.env.example` or any committed file

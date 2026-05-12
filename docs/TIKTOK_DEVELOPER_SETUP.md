@@ -14,16 +14,16 @@ A creator tool for managing short-form video publishing workflows through suppor
 ## Public website
 
 Website URL:
-https://potucky.github.io/tiktok-content-automation/
+<https://potucky.github.io/creatorflow-studio/>
 
 Terms of Service URL:
-https://potucky.github.io/tiktok-content-automation/terms/
+<https://potucky.github.io/creatorflow-studio/terms/>
 
 Privacy Policy URL:
-https://potucky.github.io/tiktok-content-automation/privacy/
+<https://potucky.github.io/creatorflow-studio/privacy/>
 
 URL verification prefix:
-https://potucky.github.io/tiktok-content-automation/
+<https://potucky.github.io/creatorflow-studio/>
 
 Verification file:
 public/tiktokeHrrFmUbyWaHvfvR4ZEMYBJC1LSuwWUv.txt
@@ -31,19 +31,20 @@ public/tiktokeHrrFmUbyWaHvfvR4ZEMYBJC1LSuwWUv.txt
 ## Current GitHub project
 
 GitHub repository:
-https://github.com/Potucky/tiktok-content-automation
+<https://github.com/Potucky/creatorflow-studio>
 
 GitHub Pages:
-https://potucky.github.io/tiktok-content-automation/
+<https://potucky.github.io/creatorflow-studio/>
 
 Local project path:
-~/tiktok-content-automation
+~/creatorflow-studio
 
 ## App icon guidance
 
 Use a custom original icon only.
 
 Do not use:
+
 - TikTok logo
 - TikTok icon
 - TikTok-like music note symbol
@@ -51,6 +52,7 @@ Do not use:
 - TCA text from old branding
 
 Safe icon direction:
+
 - Abstract play button
 - Automation arrows
 - Gear

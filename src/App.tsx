@@ -29,6 +29,7 @@ interface TokenExchangeResult {
   ok: boolean;
   tokenReceived?: boolean;
   openIdReceived?: boolean;
+  openId?: string | null;
   scope?: string | null;
   tokenType?: string | null;
   expiresIn?: number | null;
@@ -132,6 +133,16 @@ function App() {
   const [statusRefreshSheetSync, setStatusRefreshSheetSync] = useState<SheetSyncStatus>('idle');
 
   useEffect(() => {
+    if (path.includes('/terms')) {
+      document.title = 'CreatorFlow Studio | Terms';
+    } else if (path.includes('/privacy')) {
+      document.title = 'CreatorFlow Studio | Privacy';
+    } else {
+      document.title = 'CreatorFlow Studio';
+    }
+  }, [path]);
+
+  useEffect(() => {
     if (!callbackResult?.code) return;
 
     const stateValid =
@@ -211,12 +222,13 @@ function App() {
     setPublishState('loading');
     setPublishResult(null);
     setSheetSyncStatus('idle');
-    let result: PublishResult = { ok: false };
+    let result: PublishResult;
     try {
       const res = await fetch(PUBLISH_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          open_id: tokenResult?.openId ?? undefined,
           upload_mode: 'FILE_UPLOAD',
           upload_binary: true,
           check_status: true,
@@ -252,12 +264,15 @@ function App() {
     setStatusRefreshResult(null);
     setStatusRefreshSheetSync('idle');
 
-    let result: StatusRefreshResult = { ok: false };
+    let result: StatusRefreshResult;
     try {
       const res = await fetch(STATUS_CHECK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publish_id: publishId }),
+        body: JSON.stringify({
+          open_id: tokenResult?.openId ?? undefined,
+          publish_id: publishId,
+        }),
       });
       const data = await res.json();
       result = data as StatusRefreshResult;
@@ -289,7 +304,6 @@ function App() {
   }
 
   if (path.includes('/terms')) {
-    document.title = 'CreatorFlow Studio | Terms';
     return (
       <main className="page">
         <section className="card">
@@ -330,7 +344,6 @@ function App() {
   }
 
   if (path.includes('/privacy')) {
-    document.title = 'CreatorFlow Studio | Privacy';
     return (
       <main className="page">
         <section className="card">
@@ -374,7 +387,6 @@ function App() {
     );
   }
 
-  document.title = 'CreatorFlow Studio';
   return (
     <main className="page">
       <section className="hero">
@@ -434,9 +446,6 @@ function App() {
               <span className={`tt-badge ${callbackResult.code ? 'tt-ok' : 'tt-fail'}`}>
                 {callbackResult.code ? 'present' : 'missing'}
               </span>
-              {callbackResult.code && (
-                <span className="tt-code">{callbackResult.code.slice(0, 12)}…</span>
-              )}
             </div>
 
             <div className="tt-status-row">

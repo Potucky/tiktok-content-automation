@@ -23,13 +23,13 @@ Category:
 Productivity
 
 Terms:
-https://potucky.github.io/tiktok-content-automation/terms/
+<https://potucky.github.io/creatorflow-studio/terms/>
 
 Privacy:
-https://potucky.github.io/tiktok-content-automation/privacy/
+<https://potucky.github.io/creatorflow-studio/privacy/>
 
 Website:
-https://potucky.github.io/tiktok-content-automation/
+<https://potucky.github.io/creatorflow-studio/>
 
 ## Next step
 

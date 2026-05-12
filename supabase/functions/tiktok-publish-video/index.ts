@@ -5,6 +5,12 @@
 // FILE_UPLOAD supports optional server-side binary upload (upload_binary: true).
 // Tokens and upload_url are NEVER returned to the browser or written to logs.
 //
+// SECURITY: caller must supply open_id in the request body. The DB lookup is
+// filtered to that specific connection. Falling back to the latest connection
+// is intentionally not supported — a missing open_id returns HTTP 400.
+// Follow-up required: tiktok-token-exchange must return open_id in its
+// response so the frontend can supply it here.
+//
 // Required secrets (set via `supabase secrets set`):
 //   SUPABASE_URL              — project REST base URL
 //   SUPABASE_SERVICE_ROLE_KEY — service role key; server-side only, never returned
@@ -108,9 +114,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let videoSize: number | undefined;
   let chunkSize: number | undefined;
   let totalChunkCount: number | undefined;
+  let requestOpenId: string | undefined;
 
   try {
     const body = (await req.json()) as {
+      open_id?: string;
       upload_mode?: string;
       upload_binary?: boolean;
       check_status?: boolean;
@@ -121,6 +129,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       chunk_size?: number;
       total_chunk_count?: number;
     };
+    requestOpenId = body.open_id;
 
     const rawMode = body.upload_mode ?? "PULL_FROM_URL";
     if (rawMode !== "PULL_FROM_URL" && rawMode !== "FILE_UPLOAD") {
@@ -140,6 +149,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     totalChunkCount = body.total_chunk_count;
   } catch {
     return json({ ok: false, error: "Invalid JSON body" }, 400);
+  }
+
+  // ── Require caller-supplied open_id — no fallback to latest connection ──────
+  if (!requestOpenId) {
+    return json(
+      {
+        ok: false,
+        error: "Missing required field: open_id. Caller must supply the open_id from the token exchange response.",
+      },
+      400,
+    );
   }
 
   // ── Field validation per mode ───────────────────────────────────────────────
@@ -189,14 +209,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: false, error: "Server configuration error" }, 500);
   }
 
-  // ── Load latest TikTok connection from DB ───────────────────────────────────
-  // Ordered by last_token_exchange_at descending so the most recently
-  // refreshed token is used.  access_token is read server-side only and is
-  // never logged or returned to the caller.
+  // ── Load TikTok connection for the supplied open_id ─────────────────────────
+  // Filtered by the caller-provided open_id — no fallback to latest row.
+  // access_token is read server-side only and is never logged or returned.
   let connection: ConnectionRecord | null;
   try {
     const dbRes = await fetch(
-      `${supabaseUrl}/rest/v1/${DB_TABLE}?order=last_token_exchange_at.desc&limit=1`,
+      `${supabaseUrl}/rest/v1/${DB_TABLE}?open_id=eq.${encodeURIComponent(requestOpenId)}&limit=1`,
       {
         headers: {
           "apikey": serviceRoleKey,

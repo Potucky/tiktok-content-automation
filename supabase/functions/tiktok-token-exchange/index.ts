@@ -187,10 +187,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // ── Return safe fields only ────────────────────────────────────────────────
+  // openId is the TikTok user identifier, not a secret — safe to return.
+  // access_token and refresh_token are intentionally absent.
   return json({
     ok: true,
     tokenReceived: !!tikTokData.access_token,
     openIdReceived: !!tikTokData.open_id,
+    openId: tikTokData.open_id ?? null,
     stored: true,
     scope: tikTokData.scope ?? null,
     tokenType: tikTokData.token_type ?? null,

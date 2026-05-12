@@ -35,13 +35,13 @@ Set all of these via `supabase secrets set <KEY>=<value>` before deploying or te
 ## Public site checks
 
 - Homepage opens:
-  <https://potucky.github.io/tiktok-content-automation/>
+  <https://potucky.github.io/creatorflow-studio/>
 
 - Terms page opens:
-  <https://potucky.github.io/tiktok-content-automation/terms/>
+  <https://potucky.github.io/creatorflow-studio/terms/>
 
 - Privacy page opens:
-  <https://potucky.github.io/tiktok-content-automation/privacy/>
+  <https://potucky.github.io/creatorflow-studio/privacy/>
 
 - Homepage legal buttons point to the correct GitHub Pages project path.
 - No legal link points to <https://potucky.github.io/terms> or <https://potucky.github.io/privacy>.
