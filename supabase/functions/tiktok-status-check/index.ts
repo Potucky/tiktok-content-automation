@@ -22,6 +22,9 @@ interface ConnectionRecord {
   access_token?: string;
   scope?: string;
   last_token_exchange_at?: string;
+  display_name?: string;
+  username?: string;
+  avatar_url?: string;
   [key: string]: unknown;
 }
 
@@ -177,6 +180,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       connectionOpenIdMasked: maskOpenId(connection.open_id),
       ...(connection.scope != null && { connectionScope: connection.scope }),
       ...(connection.last_token_exchange_at != null && { connectionLastTokenExchangeAt: connection.last_token_exchange_at }),
+      ...(connection.display_name != null && { connectionDisplayName: connection.display_name }),
+      ...(connection.username != null && { connectionUsername: connection.username }),
       ...(!tikTokOk && {
         tikTokErrorCode: statusData.error?.code,
         tikTokErrorMessage: statusData.error?.message,

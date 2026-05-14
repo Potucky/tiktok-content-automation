@@ -27,6 +27,9 @@ interface ConnectionRecord {
   refresh_token?: string;
   scope?: string;
   last_token_exchange_at?: string;
+  display_name?: string;
+  username?: string;
+  avatar_url?: string;
   [key: string]: unknown;
 }
 
@@ -115,6 +118,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let chunkSize: number | undefined;
   let totalChunkCount: number | undefined;
   let requestOpenId: string | undefined;
+  let disableComment: boolean | undefined;
+  let disableDuet: boolean | undefined;
+  let disableStitch: boolean | undefined;
 
   try {
     const body = (await req.json()) as {
@@ -128,6 +134,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       video_size?: number;
       chunk_size?: number;
       total_chunk_count?: number;
+      disable_comment?: boolean;
+      disable_duet?: boolean;
+      disable_stitch?: boolean;
     };
     requestOpenId = body.open_id;
 
@@ -147,6 +156,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     videoSize = body.video_size;
     chunkSize = body.chunk_size;
     totalChunkCount = body.total_chunk_count;
+    disableComment = body.disable_comment;
+    disableDuet = body.disable_duet;
+    disableStitch = body.disable_stitch;
   } catch {
     return json({ ok: false, error: "Invalid JSON body" }, 400);
   }
@@ -296,6 +308,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     connectionOpenIdMasked: maskOpenId(connection!.open_id),
     ...(connection!.scope != null && { connectionScope: connection!.scope }),
     ...(connection!.last_token_exchange_at != null && { connectionLastTokenExchangeAt: connection!.last_token_exchange_at }),
+    ...(connection!.display_name != null && { connectionDisplayName: connection!.display_name }),
+    ...(connection!.username != null && { connectionUsername: connection!.username }),
     ...(videoUrl !== undefined && { requestedVideoUrl: videoUrl }),
     requestedTitle: title,
     ...(privacyLevel !== undefined && { requestedPrivacyLevel: privacyLevel }),
@@ -307,9 +321,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ── Call TikTok Direct Post API — production publish init ─────────────────
   // access_token is used here server-side only; never logged, never returned.
   // post_info is required by the direct post endpoint (video.publish scope).
-  const postInfo = {
+  const postInfo: Record<string, unknown> = {
     title: title!,
     privacy_level: privacyLevel ?? "SELF_ONLY",
+    ...(disableComment !== undefined && { disable_comment: disableComment }),
+    ...(disableDuet !== undefined && { disable_duet: disableDuet }),
+    ...(disableStitch !== undefined && { disable_stitch: disableStitch }),
   };
 
   console.log("[tiktok-publish-video] endpoint=direct_post privacy_level=" + postInfo.privacy_level);
