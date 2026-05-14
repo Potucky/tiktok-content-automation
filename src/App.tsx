@@ -1083,28 +1083,37 @@ function App() {
           {/* ── Commercial Content Disclosure ── */}
           <div className="dash-sub-label">Commercial Content Disclosure</div>
 
-          <label className="disclosure-toggle-row">
+          <div
+            className="disclosure-toggle-row"
+            role="switch"
+            aria-checked={disclosureEnabled ? 'true' : 'false'}
+            tabIndex={0}
+            onClick={() => {
+              const next = !disclosureEnabled;
+              setDisclosureEnabled(next);
+              if (!next) { setYourBrand(false); setBrandedContent(false); }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                const next = !disclosureEnabled;
+                setDisclosureEnabled(next);
+                if (!next) { setYourBrand(false); setBrandedContent(false); }
+              }
+            }}
+          >
             <span className="disclosure-toggle-label">
               This content promotes myself, a brand, product, or service
             </span>
             <span className="disclosure-switch-wrap">
-              <input
-                type="checkbox"
-                className="disclosure-switch-input"
-                checked={disclosureEnabled}
-                onChange={(e) => {
-                  setDisclosureEnabled(e.target.checked);
-                  if (!e.target.checked) { setYourBrand(false); setBrandedContent(false); }
-                }}
-              />
-              <span className="disclosure-switch-track">
+              <span className={`disclosure-switch-track${disclosureEnabled ? ' disclosure-switch-track--on' : ''}`}>
                 <span className="disclosure-switch-knob" />
               </span>
               <span className={`disclosure-switch-state${disclosureEnabled ? ' disclosure-switch-state--on' : ''}`}>
                 {disclosureEnabled ? 'On' : 'Off'}
               </span>
             </span>
-          </label>
+          </div>
 
           {disclosureEnabled && (
             <div className={`disclosure-options${disclosureInvalid ? ' disclosure-options--warn' : ''}`}>

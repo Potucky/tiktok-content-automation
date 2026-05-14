@@ -893,6 +893,11 @@ details[open] > .dash-details-summary::before {
   border-color: #cbd5e1;
 }
 
+.disclosure-toggle-row:focus-visible {
+  outline: 2px solid #fe2c55;
+  outline-offset: 2px;
+}
+
 .disclosure-toggle-label {
   font-size: 0.875rem;
   color: #1e293b;
@@ -907,19 +912,6 @@ details[open] > .dash-details-summary::before {
   flex-shrink: 0;
 }
 
-/* Visually hidden — preserves semantics/keyboard access */
-.disclosure-switch-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
-}
-
 .disclosure-switch-track {
   position: relative;
   width: 44px;
@@ -928,6 +920,10 @@ details[open] > .dash-details-summary::before {
   border-radius: 999px;
   transition: background 0.2s;
   flex-shrink: 0;
+}
+
+.disclosure-switch-track--on {
+  background: #fe2c55;
 }
 
 .disclosure-switch-knob {
@@ -942,11 +938,7 @@ details[open] > .dash-details-summary::before {
   transition: transform 0.2s;
 }
 
-.disclosure-switch-input:checked + .disclosure-switch-track {
-  background: #fe2c55;
-}
-
-.disclosure-switch-input:checked + .disclosure-switch-track .disclosure-switch-knob {
+.disclosure-switch-track--on .disclosure-switch-knob {
   transform: translateX(20px);
 }
 
