@@ -124,6 +124,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let disableComment: boolean | undefined;
   let disableDuet: boolean | undefined;
   let disableStitch: boolean | undefined;
+  let brandContentToggle: boolean | undefined;
+  let brandOrganicToggle: boolean | undefined;
+  let brandedContentToggle: boolean | undefined;
   // Bytes from a browser-selected local file (multipart path only)
   let localFileBytes: ArrayBuffer | null = null;
 
@@ -145,6 +148,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       disableDuet = ddStr !== null ? ddStr === "true" : undefined;
       const dsStr = fd.get("disable_stitch") as string | null;
       disableStitch = dsStr !== null ? dsStr === "true" : undefined;
+      const bctStr = fd.get("brand_content_toggle") as string | null;
+      brandContentToggle = bctStr !== null ? bctStr === "true" : undefined;
+      const botStr = fd.get("brand_organic_toggle") as string | null;
+      brandOrganicToggle = botStr !== null ? botStr === "true" : undefined;
+      const bcTogStr = fd.get("branded_content_toggle") as string | null;
+      brandedContentToggle = bcTogStr !== null ? bcTogStr === "true" : undefined;
 
       const videoFile = fd.get("video") as File | null;
       if (!videoFile || videoFile.size === 0) {
@@ -170,6 +179,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         disable_comment?: boolean;
         disable_duet?: boolean;
         disable_stitch?: boolean;
+        brand_content_toggle?: boolean;
+        brand_organic_toggle?: boolean;
+        branded_content_toggle?: boolean;
       };
       requestOpenId = body.open_id;
 
@@ -192,6 +204,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       disableComment = body.disable_comment;
       disableDuet = body.disable_duet;
       disableStitch = body.disable_stitch;
+      brandContentToggle = body.brand_content_toggle;
+      brandOrganicToggle = body.brand_organic_toggle;
+      brandedContentToggle = body.branded_content_toggle;
     }
   } catch {
     return json({ ok: false, error: "Invalid request body" }, 400);
@@ -360,12 +375,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ── Call TikTok Direct Post API — production publish init ─────────────────
   // access_token is used here server-side only; never logged, never returned.
   // post_info is required by the direct post endpoint (video.publish scope).
+  // branded_content_toggle must never be true when privacy_level is SELF_ONLY — TikTok rejects the combination.
+  // Apply the guard server-side regardless of what the client sent.
+  const safeBrandedContent =
+    brandedContentToggle === true && (privacyLevel ?? "SELF_ONLY") !== "SELF_ONLY";
+
   const postInfo: Record<string, unknown> = {
     title: title!,
     privacy_level: privacyLevel ?? "SELF_ONLY",
     ...(disableComment !== undefined && { disable_comment: disableComment }),
     ...(disableDuet !== undefined && { disable_duet: disableDuet }),
     ...(disableStitch !== undefined && { disable_stitch: disableStitch }),
+    ...(brandContentToggle !== undefined && { brand_content_toggle: brandContentToggle }),
+    ...(brandOrganicToggle !== undefined && { brand_organic_toggle: brandOrganicToggle }),
+    ...(brandedContentToggle !== undefined && { branded_content_toggle: safeBrandedContent }),
   };
 
   console.log("[tiktok-publish-video] endpoint=direct_post privacy_level=" + postInfo.privacy_level);

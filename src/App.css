@@ -877,6 +877,20 @@ details[open] > .dash-details-summary::before {
   gap: 0.15rem;
 }
 
+.disclosure-options--warn {
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  background: #fffbeb;
+  padding-right: 0.5rem;
+  padding-bottom: 0.35rem;
+}
+
+.disclosure-warn-text {
+  margin-top: 0.45rem;
+  font-weight: 500;
+  color: #92400e;
+}
+
 .disclosure-hint {
   font-size: 0.72rem;
   color: #475569;

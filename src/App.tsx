@@ -370,6 +370,9 @@ function App() {
         fd.append('disable_comment', String(!allowComment));
         fd.append('disable_duet', String(!allowDuet));
         fd.append('disable_stitch', String(!allowStitch));
+        fd.append('brand_content_toggle', String(disclosureEnabled));
+        fd.append('brand_organic_toggle', String(disclosureEnabled && yourBrand));
+        fd.append('branded_content_toggle', String(disclosureEnabled && brandedContent && selectedPrivacy !== 'SELF_ONLY'));
         fd.append('video', selectedFile, selectedFile.name);
         res = await fetch(PUBLISH_URL, { method: 'POST', body: fd });
       } else {
@@ -388,6 +391,9 @@ function App() {
             disable_comment: !allowComment,
             disable_duet: !allowDuet,
             disable_stitch: !allowStitch,
+            brand_content_toggle: disclosureEnabled,
+            brand_organic_toggle: disclosureEnabled && yourBrand,
+            branded_content_toggle: disclosureEnabled && brandedContent && selectedPrivacy !== 'SELF_ONLY',
           }),
         });
       }
@@ -1008,7 +1014,11 @@ function App() {
               id="privacy-select"
               className="tt-select"
               value={selectedPrivacy}
-              onChange={(e) => setSelectedPrivacy(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSelectedPrivacy(v);
+                if (v === 'SELF_ONLY') setBrandedContent(false);
+              }}
               disabled={!creatorInfoLoaded}
             >
               <option value="">— select privacy —</option>
@@ -1086,7 +1096,7 @@ function App() {
           </label>
 
           {disclosureEnabled && (
-            <div className="disclosure-options">
+            <div className={`disclosure-options${disclosureInvalid ? ' disclosure-options--warn' : ''}`}>
               <label className="tt-consent">
                 <input
                   type="checkbox"
@@ -1116,8 +1126,8 @@ function App() {
               )}
 
               {disclosureInvalid && (
-                <p className="field-hint field-hint--warn">
-                  Select at least one disclosure option to enable publishing.
+                <p className="field-hint field-hint--warn disclosure-warn-text">
+                  You need to indicate if your content promotes yourself, a third party, or both.
                 </p>
               )}
             </div>
