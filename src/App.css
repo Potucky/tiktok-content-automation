@@ -870,8 +870,101 @@ details[open] > .dash-details-summary::before {
 }
 
 /* ─── Commercial Content Disclosure ─── */
+
+/* iOS-style toggle row */
+.disclosure-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+  padding: 0.55rem 0.7rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.disclosure-toggle-row:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.disclosure-toggle-label {
+  font-size: 0.875rem;
+  color: #1e293b;
+  line-height: 1.45;
+  flex: 1;
+}
+
+.disclosure-switch-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+/* Visually hidden — preserves semantics/keyboard access */
+.disclosure-switch-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.disclosure-switch-track {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: #cbd5e1;
+  border-radius: 999px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.disclosure-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  transition: transform 0.2s;
+}
+
+.disclosure-switch-input:checked + .disclosure-switch-track {
+  background: #fe2c55;
+}
+
+.disclosure-switch-input:checked + .disclosure-switch-track .disclosure-switch-knob {
+  transform: translateX(20px);
+}
+
+.disclosure-switch-state {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+  min-width: 22px;
+  text-align: right;
+}
+
+.disclosure-switch-state--on {
+  color: #fe2c55;
+}
+
+/* Sub-options shown when toggle is On */
 .disclosure-options {
-  padding: 0.3rem 0 0 1.3rem;
+  padding: 0.3rem 0 0 0;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -881,8 +974,7 @@ details[open] > .dash-details-summary::before {
   border: 1px solid #fcd34d;
   border-radius: 6px;
   background: #fffbeb;
-  padding-right: 0.5rem;
-  padding-bottom: 0.35rem;
+  padding: 0.3rem 0.5rem 0.35rem;
 }
 
 .disclosure-warn-text {
