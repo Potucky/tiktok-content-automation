@@ -114,6 +114,37 @@ type StatusRefreshState = 'idle' | 'loading' | 'done';
 type CreatorInfoStatus = 'idle' | 'loading' | 'done' | 'error';
 type SheetSyncStatus = 'idle' | 'loading' | 'saved' | 'failed';
 
+interface CCChannel {
+  handle: string;
+  niche: string;
+  status: 'Active' | 'Paused' | 'Needs Auth';
+  postsToday: number;
+  postsLimit: number;
+  nextScheduled: string;
+}
+
+interface CCQueueItem {
+  title: string;
+  channel: string;
+  status: 'Ready' | 'Scheduled' | 'Publishing' | 'Published' | 'Failed';
+  time: string;
+  action: string;
+}
+
+const CC_CHANNELS: CCChannel[] = [
+  { handle: '@qa_automation_daily', niche: 'QA Automation', status: 'Active', postsToday: 2, postsLimit: 5, nextScheduled: 'Next 6:40 PM' },
+  { handle: '@ai_tools_watch', niche: 'AI Tools', status: 'Active', postsToday: 1, postsLimit: 5, nextScheduled: 'Next 8:15 PM' },
+  { handle: '@creator_growth_lab', niche: 'Creator Growth', status: 'Needs Auth', postsToday: 0, postsLimit: 5, nextScheduled: 'Reconnect required' },
+];
+
+const CC_QUEUE: CCQueueItem[] = [
+  { title: 'Selenium Waits Explained', channel: '@qa_automation_daily', status: 'Scheduled', time: 'Today 6:40 PM', action: 'Preview' },
+  { title: 'Top 3 AI Video Tools', channel: '@ai_tools_watch', status: 'Ready', time: 'Not scheduled', action: 'Publish' },
+  { title: 'Debugging API Tests', channel: '@qa_automation_daily', status: 'Published', time: 'Today 9:15 AM', action: 'View' },
+  { title: 'Creator Hook Formula', channel: '@creator_growth_lab', status: 'Failed', time: 'Auth required', action: 'Retry' },
+  { title: 'Playwright vs Selenium', channel: '@qa_automation_daily', status: 'Publishing', time: 'Processing', action: 'View' },
+];
+
 function maskClientKey(key: string): string {
   if (key.length <= 8) return key.slice(0, 2) + '...' + key.slice(-2);
   return key.slice(0, 4) + '...' + key.slice(-4);
@@ -1460,6 +1491,77 @@ function App() {
         </section>
 
       </div>
+
+      {/* ── TikTok Control Center ── */}
+      <section className="card cc-section">
+        <h2 className="cc-title">TikTok Control Center</h2>
+
+        <div className="cc-summary-row">
+          <div className="cc-summary-card">
+            <span className="cc-summary-val cc-val-green">2</span>
+            <span className="cc-summary-lbl">Active Channels</span>
+          </div>
+          <div className="cc-summary-card">
+            <span className="cc-summary-val cc-val-blue">1</span>
+            <span className="cc-summary-lbl">Ready Videos</span>
+          </div>
+          <div className="cc-summary-card">
+            <span className="cc-summary-val cc-val-blue">1</span>
+            <span className="cc-summary-lbl">Scheduled Today</span>
+          </div>
+          <div className="cc-summary-card">
+            <span className="cc-summary-val cc-val-green">1</span>
+            <span className="cc-summary-lbl">Published Today</span>
+          </div>
+          <div className="cc-summary-card">
+            <span className="cc-summary-val cc-val-red">1</span>
+            <span className="cc-summary-lbl">Failed</span>
+          </div>
+        </div>
+
+        <div className="cc-sub-label">Channels</div>
+        <div className="cc-table">
+          {CC_CHANNELS.map((ch) => (
+            <div className="cc-row" key={ch.handle}>
+              <span className="cc-handle">{ch.handle}</span>
+              <span className="cc-niche">{ch.niche}</span>
+              <span className={`cc-badge ${ch.status === 'Active' ? 'cc-badge-ok' : ch.status === 'Paused' ? 'cc-badge-muted' : 'cc-badge-fail'}`}>
+                {ch.status}
+              </span>
+              <span className="cc-meta">{ch.postsToday} / {ch.postsLimit} today</span>
+              <span className="cc-meta cc-meta--flex">{ch.nextScheduled}</span>
+              <button type="button" className="tt-btn-secondary cc-row-btn" disabled>
+                {ch.status === 'Needs Auth' ? 'Reconnect' : ch.status === 'Paused' ? 'Resume' : 'View'}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="cc-sub-label cc-sub-label--mt">Publishing Queue</div>
+        <div className="cc-table">
+          {CC_QUEUE.map((item, i) => (
+            <div className="cc-row" key={i}>
+              <span className="cc-queue-title">{item.title}</span>
+              <span className="cc-queue-channel">{item.channel}</span>
+              <span className={`cc-badge ${
+                item.status === 'Published' ? 'cc-badge-ok' :
+                item.status === 'Ready' || item.status === 'Scheduled' ? 'cc-badge-info' :
+                item.status === 'Publishing' ? 'cc-badge-purple' :
+                'cc-badge-fail'
+              }`}>
+                {item.status}
+              </span>
+              <span className="cc-meta cc-meta--flex">{item.time}</span>
+              <button type="button" className="tt-btn-secondary cc-row-btn" disabled>
+                {item.action}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <p className="dash-note dash-mt-sm">Multi-channel scheduling will connect to Supabase content_queue next.</p>
+      </section>
+
     </main>
   );
 }
