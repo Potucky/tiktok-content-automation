@@ -528,6 +528,24 @@ p {
   border-top: 1px solid #1e293b;
 }
 
+.dash-video-size {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: #64748b;
+  padding: 2px 8px 4px;
+}
+
+.dash-video-picker {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.dash-file-input-hidden {
+  display: none;
+}
+
 .dash-video-url {
   color: #2563eb;
   text-decoration: none;

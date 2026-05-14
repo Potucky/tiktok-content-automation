@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './App.css';
 
 const TIKTOK_AUTH_BASE = 'https://www.tiktok.com/v2/auth/authorize/';
@@ -12,11 +12,15 @@ const STATUS_CHECK_URL =
   'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-status-check';
 const CREATOR_INFO_URL =
   'https://ggeoggxygoiydnxwclcn.supabase.co/functions/v1/tiktok-creator-info';
-const TEST_VIDEO_URL =
+const DEMO_VIDEO_URL =
   'https://potucky.github.io/creatorflow-studio/test-videos/creatorflow-review-demo.mp4';
+const DEMO_VIDEO_LABEL = 'creatorflow-review-demo.mp4';
 const DEFAULT_TITLE = 'Creator video upload';
 const GOOGLE_SHEET_WEBHOOK_URL =
   'https://script.google.com/macros/s/AKfycbztz1c-8Hy4pk6mQ8CYBWYXCoTPmmcJXnJ77GVk4w8mVs0-Kt2PA_uQ0sN-msEyx73I8w/exec';
+
+// 500 MB — validate before sending to the edge function
+const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 
 interface CallbackResult {
   code: string | null;
@@ -115,6 +119,12 @@ function maskClientKey(key: string): string {
   return key.slice(0, 4) + '...' + key.slice(-4);
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
 function buildAuthUrl(clientKey: string, redirectUri: string): string {
   const state = crypto.randomUUID();
   sessionStorage.setItem(SESSION_STATE_KEY, state);
@@ -174,6 +184,13 @@ function App() {
   const [disclosureEnabled, setDisclosureEnabled] = useState(false);
   const [yourBrand, setYourBrand] = useState(false);
   const [brandedContent, setBrandedContent] = useState(false);
+
+  // Selected local video file for publish; null = use fallback demo video
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedPreviewUrl, setSelectedPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Track the current object URL so it can be revoked before creating a new one
+  const selectedPreviewUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (path.includes('/terms')) {
@@ -237,6 +254,14 @@ function App() {
       .finally(() => setExchangeStatus('done'));
   }, [callbackResult]);
 
+  // Revoke the object URL on unmount to avoid memory leaks
+  useEffect(() => {
+    const urlRef = selectedPreviewUrlRef;
+    return () => {
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    };
+  }, []);
+
   const clientKey = import.meta.env.VITE_TIKTOK_CLIENT_KEY as string | undefined;
   const redirectUri = import.meta.env.VITE_TIKTOK_REDIRECT_URI as string | undefined;
   const missingConfig = !clientKey || !redirectUri;
@@ -246,7 +271,39 @@ function App() {
     window.location.href = buildAuthUrl(clientKey, redirectUri);
   }
 
-  async function logToGoogleSheet(result: PublishResult, videoTitle: string, notes = ''): Promise<boolean> {
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    if (selectedPreviewUrlRef.current) {
+      URL.revokeObjectURL(selectedPreviewUrlRef.current);
+      selectedPreviewUrlRef.current = null;
+    }
+    if (!file) {
+      setSelectedFile(null);
+      setSelectedPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    selectedPreviewUrlRef.current = url;
+    setSelectedFile(file);
+    setSelectedPreviewUrl(url);
+  }
+
+  function clearSelectedFile() {
+    if (selectedPreviewUrlRef.current) {
+      URL.revokeObjectURL(selectedPreviewUrlRef.current);
+      selectedPreviewUrlRef.current = null;
+    }
+    setSelectedFile(null);
+    setSelectedPreviewUrl(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  async function logToGoogleSheet(
+    result: PublishResult,
+    videoTitle: string,
+    notes = '',
+    videoSource = DEMO_VIDEO_URL,
+  ): Promise<boolean> {
     const now = new Date().toISOString();
     const payload = {
       ok: result.ok ?? null,
@@ -258,7 +315,7 @@ function App() {
       publishId: result.publishId ?? null,
       uploadedBytes: result.uploadedBytes ?? null,
       environment: 'production',
-      videoUrl: TEST_VIDEO_URL,
+      videoUrl: videoSource,
       errorMessage: result.error ?? null,
       connectionOpenIdMasked: result.connectionOpenIdMasked ?? null,
       connectionScope: result.connectionScope ?? null,
@@ -283,27 +340,57 @@ function App() {
   }
 
   async function handlePublish() {
+    // Validate file size before sending
+    if (selectedFile && selectedFile.size > MAX_VIDEO_BYTES) {
+      setPublishResult({
+        ok: false,
+        error: `Selected file is too large (${formatFileSize(selectedFile.size)}). Maximum allowed size is ${formatFileSize(MAX_VIDEO_BYTES)}.`,
+      });
+      setPublishState('done');
+      return;
+    }
+
     setPublishState('loading');
     setPublishResult(null);
     setSheetSyncStatus('idle');
+
     let result: PublishResult;
     try {
-      const res = await fetch(PUBLISH_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          open_id: tokenResult?.openId ?? undefined,
-          upload_mode: 'FILE_UPLOAD',
-          upload_binary: true,
-          check_status: true,
-          video_url: TEST_VIDEO_URL,
-          title,
-          privacy_level: selectedPrivacy || 'SELF_ONLY',
-          disable_comment: !allowComment,
-          disable_duet: !allowDuet,
-          disable_stitch: !allowStitch,
-        }),
-      });
+      let res: Response;
+      if (selectedFile) {
+        // Send selected local file as multipart/form-data so the edge function
+        // can upload the bytes directly to TikTok without needing a public URL.
+        const fd = new FormData();
+        if (tokenResult?.openId) fd.append('open_id', tokenResult.openId);
+        fd.append('upload_mode', 'FILE_UPLOAD');
+        fd.append('upload_binary', 'true');
+        fd.append('check_status', 'true');
+        fd.append('title', title);
+        fd.append('privacy_level', selectedPrivacy || 'SELF_ONLY');
+        fd.append('disable_comment', String(!allowComment));
+        fd.append('disable_duet', String(!allowDuet));
+        fd.append('disable_stitch', String(!allowStitch));
+        fd.append('video', selectedFile, selectedFile.name);
+        res = await fetch(PUBLISH_URL, { method: 'POST', body: fd });
+      } else {
+        // Fallback: use the hosted demo video URL (server-side download)
+        res = await fetch(PUBLISH_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            open_id: tokenResult?.openId ?? undefined,
+            upload_mode: 'FILE_UPLOAD',
+            upload_binary: true,
+            check_status: true,
+            video_url: DEMO_VIDEO_URL,
+            title,
+            privacy_level: selectedPrivacy || 'SELF_ONLY',
+            disable_comment: !allowComment,
+            disable_duet: !allowDuet,
+            disable_stitch: !allowStitch,
+          }),
+        });
+      }
       const data = await res.json();
       result = data as PublishResult;
     } catch {
@@ -315,8 +402,9 @@ function App() {
     setStatusRefreshResult(null);
     setStatusRefreshSheetSync('idle');
 
+    const videoSource = selectedFile ? selectedFile.name : DEMO_VIDEO_URL;
     setSheetSyncStatus('loading');
-    logToGoogleSheet(result, title)
+    logToGoogleSheet(result, title, '', videoSource)
       .then((synced) => setSheetSyncStatus(synced ? 'saved' : 'failed'))
       .catch(() => setSheetSyncStatus('failed'));
   }
@@ -362,7 +450,8 @@ function App() {
       tokenAvailable: result.tokenAvailable,
       openIdPresent: result.openIdPresent,
     };
-    logToGoogleSheet(asPublishResult, title, 'status_refresh')
+    const videoSource = selectedFile ? selectedFile.name : DEMO_VIDEO_URL;
+    logToGoogleSheet(asPublishResult, title, 'status_refresh', videoSource)
       .then((synced) => setStatusRefreshSheetSync(synced ? 'saved' : 'failed'))
       .catch(() => setStatusRefreshSheetSync('failed'));
   }
@@ -515,7 +604,6 @@ function App() {
 
   const creatorInfoLoaded = creatorInfoStatus === 'done' && creatorInfoResult?.ok === true;
   const cannotPostNow = creatorInfoLoaded && creatorInfoResult?.can_post === false;
-  const isPrivacyMismatch = selectedPrivacy !== '' && selectedPrivacy !== 'SELF_ONLY';
   const disclosureInvalid = disclosureEnabled && !yourBrand && !brandedContent;
   const brandedContentPrivacyConflict = brandedContent && selectedPrivacy === 'SELF_ONLY';
   const publishDisabled =
@@ -525,7 +613,6 @@ function App() {
     !creatorInfoLoaded ||
     cannotPostNow ||
     !selectedPrivacy ||
-    isPrivacyMismatch ||
     !title.trim() ||
     disclosureInvalid ||
     brandedContentPrivacyConflict;
@@ -778,13 +865,48 @@ function App() {
         <section className="card dash-card tt-section">
           <h2 className="dash-card-h2">Publish Video</h2>
 
+          {/* Video preview */}
           <div className="dash-video-wrap">
             <video
-              src={`${import.meta.env.BASE_URL}test-videos/creatorflow-review-demo.mp4`}
+              key={selectedPreviewUrl ?? 'demo'}
+              src={selectedPreviewUrl ?? `${import.meta.env.BASE_URL}test-videos/creatorflow-review-demo.mp4`}
               controls
               className="dash-video"
             />
-            <div className="dash-video-name">creatorflow-review-demo.mp4</div>
+            <div className="dash-video-name">
+              {selectedFile ? selectedFile.name : `${DEMO_VIDEO_LABEL} (demo)`}
+            </div>
+            {selectedFile && (
+              <div className="dash-video-size">{formatFileSize(selectedFile.size)}</div>
+            )}
+          </div>
+
+          {/* File picker controls */}
+          <div className="dash-video-picker">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/mp4"
+              aria-label="Choose MP4 video file"
+              className="dash-file-input-hidden"
+              onChange={handleFileChange}
+            />
+            <button
+              type="button"
+              className="tt-btn-secondary"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Choose video
+            </button>
+            {selectedFile && (
+              <button
+                type="button"
+                className="tt-btn-secondary"
+                onClick={clearSelectedFile}
+              >
+                Use demo video
+              </button>
+            )}
           </div>
 
           <div className="tt-field-row dash-mt-xs">
@@ -806,7 +928,7 @@ function App() {
           {creatorInfoStatus === 'idle' && (
             <div className="creator-info-idle">
               <p className="dash-note dash-note--warn">
-                Creator info is required before final audit-ready publishing.
+                Creator info is required before publishing.
               </p>
               <button
                 type="button"
@@ -898,13 +1020,7 @@ function App() {
 
           {creatorInfoLoaded && !selectedPrivacy && (
             <p className="field-hint">
-              Unaudited TikTok apps can only publish SELF_ONLY videos to private accounts.
-            </p>
-          )}
-
-          {isPrivacyMismatch && (
-            <p className="field-hint field-hint--warn">
-              Public posting is disabled until TikTok app review is approved.
+              Available privacy options are provided by TikTok for the connected account.
             </p>
           )}
 
@@ -1029,11 +1145,6 @@ function App() {
           </label>
 
           <div>
-            {isPrivacyMismatch && (
-              <p className="field-hint field-hint--warn">
-                Public posting is disabled until TikTok app review is approved.
-              </p>
-            )}
             <button
               type="button"
               className="tt-btn dash-btn"
@@ -1118,10 +1229,6 @@ function App() {
                 <span className="checklist-dot checklist-dot--pass" />
                 <span className="checklist-text">Tokens stored server-side only</span>
               </div>
-              <div className="checklist-row">
-                <span className="checklist-dot checklist-dot--pass" />
-                <span className="checklist-text">Public posting disabled (unaudited app)</span>
-              </div>
 
               <details className="dash-details dash-mt-sm">
                 <summary className="dash-details-summary">Technical Details</summary>
@@ -1181,15 +1288,17 @@ function App() {
 
               <div className="tt-status-row">
                 <span className="tt-label">Privacy</span>
-                <span className="tt-code dash-privacy-val">SELF_ONLY — Private</span>
+                <span className="tt-code dash-privacy-val">{selectedPrivacy}</span>
               </div>
 
               {isComplete && (
                 <>
                   <div className="dash-complete-msg">
-                    <strong>Published as Private / SELF_ONLY.</strong>
+                    <strong>Video published successfully.</strong>
                     <br />
-                    Open TikTok → Profile → lock/private tab.
+                    {selectedPrivacy === 'SELF_ONLY'
+                      ? 'Open TikTok → Profile → lock/private tab.'
+                      : 'Open TikTok → Profile to view the published video.'}
                   </div>
                   <p className="field-hint dash-mt-xs">
                     TikTok may take a few minutes to process the video before it appears on the profile.
@@ -1204,7 +1313,7 @@ function App() {
               {(publishResult.tikTokErrorCode === 'unaudited_client_can_only_post_to_private_accounts' ||
                 statusRefreshResult?.tikTokErrorCode === 'unaudited_client_can_only_post_to_private_accounts') && (
                 <p className="dash-note dash-note--warn dash-mt-sm">
-                  TikTok blocked this publish because the app has not passed review yet. Set the TikTok account to Private, keep privacy as SELF_ONLY, then retry.
+                  TikTok requires the account to be set to Private with SELF_ONLY privacy for this publish attempt. Check your TikTok account privacy settings and try again.
                 </p>
               )}
 
@@ -1286,6 +1395,14 @@ function App() {
                       <span className="tt-label">Connection ID</span>
                       <span className="tt-code">
                         {publishResult.connectionOpenIdMasked ?? statusRefreshResult?.connectionOpenIdMasked}
+                      </span>
+                    </div>
+                  )}
+                  {(publishResult.connectionScope ?? statusRefreshResult?.connectionScope) && (
+                    <div className="tt-meta-row">
+                      <span className="tt-label">Sheet saved</span>
+                      <span className="tt-code">
+                        {sheetSyncStatus === 'saved' || statusRefreshSheetSync === 'saved' ? 'yes' : 'no'}
                       </span>
                     </div>
                   )}

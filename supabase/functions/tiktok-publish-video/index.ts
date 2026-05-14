@@ -2,14 +2,14 @@
 //
 // Initiates a TikTok Direct Post (video.publish scope).
 // Supports PULL_FROM_URL (default) and FILE_UPLOAD modes.
-// FILE_UPLOAD supports optional server-side binary upload (upload_binary: true).
+// FILE_UPLOAD supports:
+//   - server-side binary upload from a URL (upload_binary: true + video_url, JSON body)
+//   - browser-selected local file (multipart/form-data with "video" file field)
 // Tokens and upload_url are NEVER returned to the browser or written to logs.
 //
 // SECURITY: caller must supply open_id in the request body. The DB lookup is
 // filtered to that specific connection. Falling back to the latest connection
 // is intentionally not supported — a missing open_id returns HTTP 400.
-// Follow-up required: tiktok-token-exchange must return open_id in its
-// response so the frontend can supply it here.
 //
 // Required secrets (set via `supabase secrets set`):
 //   SUPABASE_URL              — project REST base URL
@@ -107,7 +107,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: false, error: "Function is restricted to production environment" }, 403);
   }
 
-  // ── Parse body ──────────────────────────────────────────────────────────────
+  // ── Parse body — multipart/form-data (local file) or JSON (URL-based) ──────
+  const contentType = req.headers.get("content-type") ?? "";
+  const isMultipart = contentType.includes("multipart/form-data");
+
   let uploadMode: UploadMode;
   let uploadBinary: boolean;
   let checkStatus: boolean;
@@ -121,46 +124,77 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let disableComment: boolean | undefined;
   let disableDuet: boolean | undefined;
   let disableStitch: boolean | undefined;
+  // Bytes from a browser-selected local file (multipart path only)
+  let localFileBytes: ArrayBuffer | null = null;
 
   try {
-    const body = (await req.json()) as {
-      open_id?: string;
-      upload_mode?: string;
-      upload_binary?: boolean;
-      check_status?: boolean;
-      video_url?: string;
-      title?: string;
-      privacy_level?: string;
-      video_size?: number;
-      chunk_size?: number;
-      total_chunk_count?: number;
-      disable_comment?: boolean;
-      disable_duet?: boolean;
-      disable_stitch?: boolean;
-    };
-    requestOpenId = body.open_id;
+    if (isMultipart) {
+      // Browser sent a local file via multipart/form-data
+      const fd = await req.formData();
+      requestOpenId = (fd.get("open_id") as string | null) ?? undefined;
+      title = (fd.get("title") as string | null) ?? undefined;
+      privacyLevel = (fd.get("privacy_level") as string | null) ?? undefined;
+      checkStatus = (fd.get("check_status") as string | null) === "true";
+      uploadMode = "FILE_UPLOAD";
+      uploadBinary = true;
+      videoUrl = undefined; // no URL for local file uploads
 
-    const rawMode = body.upload_mode ?? "PULL_FROM_URL";
-    if (rawMode !== "PULL_FROM_URL" && rawMode !== "FILE_UPLOAD") {
-      return json(
-        { ok: false, error: "upload_mode must be PULL_FROM_URL or FILE_UPLOAD" },
-        400,
-      );
+      const dcStr = fd.get("disable_comment") as string | null;
+      disableComment = dcStr !== null ? dcStr === "true" : undefined;
+      const ddStr = fd.get("disable_duet") as string | null;
+      disableDuet = ddStr !== null ? ddStr === "true" : undefined;
+      const dsStr = fd.get("disable_stitch") as string | null;
+      disableStitch = dsStr !== null ? dsStr === "true" : undefined;
+
+      const videoFile = fd.get("video") as File | null;
+      if (!videoFile || videoFile.size === 0) {
+        return json({ ok: false, error: "Multipart request missing video file field" }, 400);
+      }
+      localFileBytes = await videoFile.arrayBuffer();
+      videoSize = videoFile.size;
+      chunkSize = videoSize;
+      totalChunkCount = 1;
+    } else {
+      // JSON body — URL-based or init-only
+      const body = (await req.json()) as {
+        open_id?: string;
+        upload_mode?: string;
+        upload_binary?: boolean;
+        check_status?: boolean;
+        video_url?: string;
+        title?: string;
+        privacy_level?: string;
+        video_size?: number;
+        chunk_size?: number;
+        total_chunk_count?: number;
+        disable_comment?: boolean;
+        disable_duet?: boolean;
+        disable_stitch?: boolean;
+      };
+      requestOpenId = body.open_id;
+
+      const rawMode = body.upload_mode ?? "PULL_FROM_URL";
+      if (rawMode !== "PULL_FROM_URL" && rawMode !== "FILE_UPLOAD") {
+        return json(
+          { ok: false, error: "upload_mode must be PULL_FROM_URL or FILE_UPLOAD" },
+          400,
+        );
+      }
+      uploadMode = rawMode;
+      uploadBinary = body.upload_binary === true;
+      checkStatus = body.check_status === true;
+      videoUrl = body.video_url;
+      title = body.title;
+      privacyLevel = body.privacy_level;
+      videoSize = body.video_size;
+      chunkSize = body.chunk_size;
+      totalChunkCount = body.total_chunk_count;
+      disableComment = body.disable_comment;
+      disableDuet = body.disable_duet;
+      disableStitch = body.disable_stitch;
     }
-    uploadMode = rawMode;
-    uploadBinary = body.upload_binary === true;
-    checkStatus = body.check_status === true;
-    videoUrl = body.video_url;
-    title = body.title;
-    privacyLevel = body.privacy_level;
-    videoSize = body.video_size;
-    chunkSize = body.chunk_size;
-    totalChunkCount = body.total_chunk_count;
-    disableComment = body.disable_comment;
-    disableDuet = body.disable_duet;
-    disableStitch = body.disable_stitch;
   } catch {
-    return json({ ok: false, error: "Invalid JSON body" }, 400);
+    return json({ ok: false, error: "Invalid request body" }, 400);
   }
 
   // ── Require caller-supplied open_id — no fallback to latest connection ──────
@@ -189,10 +223,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   } else {
     // FILE_UPLOAD
     if (uploadBinary) {
-      // video_url required for server-side download; video_size derived from bytes if absent
-      if (!videoUrl) {
+      // Must have either a URL (server download) or bytes already from multipart
+      if (!videoUrl && localFileBytes === null) {
         return json(
-          { ok: false, error: "Missing required field: video_url for FILE_UPLOAD with upload_binary" },
+          {
+            ok: false,
+            error:
+              "Missing video source: supply video_url in JSON or send file as multipart/form-data",
+          },
           400,
         );
       }
@@ -261,10 +299,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: false, error: "TikTok access token unavailable" }, 401);
   }
 
-  // ── Download video bytes (FILE_UPLOAD + upload_binary only) ────────────────
-  // videoSize may be derived here if the caller did not supply it.
-  let videoBytes: ArrayBuffer | null = null;
-  if (uploadMode === "FILE_UPLOAD" && uploadBinary) {
+  // ── Resolve video bytes for FILE_UPLOAD + upload_binary ────────────────────
+  // localFileBytes is set when the browser sent a multipart upload.
+  // If null, download from videoUrl instead (server-side only).
+  let videoBytes: ArrayBuffer | null = localFileBytes;
+  if (uploadMode === "FILE_UPLOAD" && uploadBinary && videoBytes === null) {
     try {
       const dlRes = await fetch(videoUrl!);
       if (!dlRes.ok) {
@@ -282,7 +321,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       console.error("[tiktok-publish-video] Video download threw:", (err as Error).message);
       return json({ ok: false, error: "Failed to download video from video_url" }, 502);
     }
-    // Apply defaults now that videoSize is known
+    // Apply defaults now that videoSize is known (URL download path only)
     chunkSize = chunkSize ?? videoSize;
     totalChunkCount = totalChunkCount ?? 1;
   }
