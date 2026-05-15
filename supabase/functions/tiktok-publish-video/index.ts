@@ -1,21 +1,21 @@
 // tiktok-publish-video — Supabase Edge Function
 //
-// Initiates a TikTok Content Posting API inbox upload.
+// Initiates a TikTok Direct Post (video.publish scope).
 // Supports PULL_FROM_URL (default) and FILE_UPLOAD modes.
-// FILE_UPLOAD supports optional server-side binary upload (upload_binary: true).
+// FILE_UPLOAD supports:
+//   - server-side binary upload from a URL (upload_binary: true + video_url, JSON body)
+//   - browser-selected local file (multipart/form-data with "video" file field)
 // Tokens and upload_url are NEVER returned to the browser or written to logs.
 //
 // SECURITY: caller must supply open_id in the request body. The DB lookup is
 // filtered to that specific connection. Falling back to the latest connection
 // is intentionally not supported — a missing open_id returns HTTP 400.
-// Follow-up required: tiktok-token-exchange must return open_id in its
-// response so the frontend can supply it here.
 //
 // Required secrets (set via `supabase secrets set`):
 //   SUPABASE_URL              — project REST base URL
 //   SUPABASE_SERVICE_ROLE_KEY — service role key; server-side only, never returned
 //   ALLOWED_ORIGIN            — frontend origin for CORS (required — no wildcard fallback)
-//   TIKTOK_ENV                — must be exactly "sandbox"; function refuses otherwise
+//   TIKTOK_ENV                — must be exactly "production"; function refuses otherwise
 
 const DB_TABLE = "creatorflow_tiktok_connections";
 
@@ -27,6 +27,9 @@ interface ConnectionRecord {
   refresh_token?: string;
   scope?: string;
   last_token_exchange_at?: string;
+  display_name?: string;
+  username?: string;
+  avatar_url?: string;
   [key: string]: unknown;
 }
 
@@ -95,16 +98,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: false, error: "Method not allowed" }, 405);
   }
 
-  // ── Sandbox guard — function must not run outside sandbox environment ───────
+  // ── Production guard — function must not run outside production environment ──
   const tiktokEnv = Deno.env.get("TIKTOK_ENV");
-  if (tiktokEnv !== "sandbox") {
+  if (tiktokEnv !== "production") {
     console.error(
-      `[tiktok-publish-video] TIKTOK_ENV="${tiktokEnv ?? "(not set)"}" — must be "sandbox"`,
+      `[tiktok-publish-video] TIKTOK_ENV="${tiktokEnv ?? "(not set)"}" — must be "production"`,
     );
-    return json({ ok: false, error: "Function is restricted to sandbox environment" }, 403);
+    return json({ ok: false, error: "Function is restricted to production environment" }, 403);
   }
 
-  // ── Parse body ──────────────────────────────────────────────────────────────
+  // ── Parse body — multipart/form-data (local file) or JSON (URL-based) ──────
+  const contentType = req.headers.get("content-type") ?? "";
+  const isMultipart = contentType.includes("multipart/form-data");
+
   let uploadMode: UploadMode;
   let uploadBinary: boolean;
   let checkStatus: boolean;
@@ -115,40 +121,95 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let chunkSize: number | undefined;
   let totalChunkCount: number | undefined;
   let requestOpenId: string | undefined;
+  let disableComment: boolean | undefined;
+  let disableDuet: boolean | undefined;
+  let disableStitch: boolean | undefined;
+  let brandContentToggle: boolean | undefined;
+  let brandOrganicToggle: boolean | undefined;
+  let brandedContentToggle: boolean | undefined;
+  // Bytes from a browser-selected local file (multipart path only)
+  let localFileBytes: ArrayBuffer | null = null;
 
   try {
-    const body = (await req.json()) as {
-      open_id?: string;
-      upload_mode?: string;
-      upload_binary?: boolean;
-      check_status?: boolean;
-      video_url?: string;
-      title?: string;
-      privacy_level?: string;
-      video_size?: number;
-      chunk_size?: number;
-      total_chunk_count?: number;
-    };
-    requestOpenId = body.open_id;
+    if (isMultipart) {
+      // Browser sent a local file via multipart/form-data
+      const fd = await req.formData();
+      requestOpenId = (fd.get("open_id") as string | null) ?? undefined;
+      title = (fd.get("title") as string | null) ?? undefined;
+      privacyLevel = (fd.get("privacy_level") as string | null) ?? undefined;
+      checkStatus = (fd.get("check_status") as string | null) === "true";
+      uploadMode = "FILE_UPLOAD";
+      uploadBinary = true;
+      videoUrl = undefined; // no URL for local file uploads
 
-    const rawMode = body.upload_mode ?? "PULL_FROM_URL";
-    if (rawMode !== "PULL_FROM_URL" && rawMode !== "FILE_UPLOAD") {
-      return json(
-        { ok: false, error: "upload_mode must be PULL_FROM_URL or FILE_UPLOAD" },
-        400,
-      );
+      const dcStr = fd.get("disable_comment") as string | null;
+      disableComment = dcStr !== null ? dcStr === "true" : undefined;
+      const ddStr = fd.get("disable_duet") as string | null;
+      disableDuet = ddStr !== null ? ddStr === "true" : undefined;
+      const dsStr = fd.get("disable_stitch") as string | null;
+      disableStitch = dsStr !== null ? dsStr === "true" : undefined;
+      const bctStr = fd.get("brand_content_toggle") as string | null;
+      brandContentToggle = bctStr !== null ? bctStr === "true" : undefined;
+      const botStr = fd.get("brand_organic_toggle") as string | null;
+      brandOrganicToggle = botStr !== null ? botStr === "true" : undefined;
+      const bcTogStr = fd.get("branded_content_toggle") as string | null;
+      brandedContentToggle = bcTogStr !== null ? bcTogStr === "true" : undefined;
+
+      const videoFile = fd.get("video") as File | null;
+      if (!videoFile || videoFile.size === 0) {
+        return json({ ok: false, error: "Multipart request missing video file field" }, 400);
+      }
+      localFileBytes = await videoFile.arrayBuffer();
+      videoSize = videoFile.size;
+      chunkSize = videoSize;
+      totalChunkCount = 1;
+    } else {
+      // JSON body — URL-based or init-only
+      const body = (await req.json()) as {
+        open_id?: string;
+        upload_mode?: string;
+        upload_binary?: boolean;
+        check_status?: boolean;
+        video_url?: string;
+        title?: string;
+        privacy_level?: string;
+        video_size?: number;
+        chunk_size?: number;
+        total_chunk_count?: number;
+        disable_comment?: boolean;
+        disable_duet?: boolean;
+        disable_stitch?: boolean;
+        brand_content_toggle?: boolean;
+        brand_organic_toggle?: boolean;
+        branded_content_toggle?: boolean;
+      };
+      requestOpenId = body.open_id;
+
+      const rawMode = body.upload_mode ?? "PULL_FROM_URL";
+      if (rawMode !== "PULL_FROM_URL" && rawMode !== "FILE_UPLOAD") {
+        return json(
+          { ok: false, error: "upload_mode must be PULL_FROM_URL or FILE_UPLOAD" },
+          400,
+        );
+      }
+      uploadMode = rawMode;
+      uploadBinary = body.upload_binary === true;
+      checkStatus = body.check_status === true;
+      videoUrl = body.video_url;
+      title = body.title;
+      privacyLevel = body.privacy_level;
+      videoSize = body.video_size;
+      chunkSize = body.chunk_size;
+      totalChunkCount = body.total_chunk_count;
+      disableComment = body.disable_comment;
+      disableDuet = body.disable_duet;
+      disableStitch = body.disable_stitch;
+      brandContentToggle = body.brand_content_toggle;
+      brandOrganicToggle = body.brand_organic_toggle;
+      brandedContentToggle = body.branded_content_toggle;
     }
-    uploadMode = rawMode;
-    uploadBinary = body.upload_binary === true;
-    checkStatus = body.check_status === true;
-    videoUrl = body.video_url;
-    title = body.title;
-    privacyLevel = body.privacy_level;
-    videoSize = body.video_size;
-    chunkSize = body.chunk_size;
-    totalChunkCount = body.total_chunk_count;
   } catch {
-    return json({ ok: false, error: "Invalid JSON body" }, 400);
+    return json({ ok: false, error: "Invalid request body" }, 400);
   }
 
   // ── Require caller-supplied open_id — no fallback to latest connection ──────
@@ -177,10 +238,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   } else {
     // FILE_UPLOAD
     if (uploadBinary) {
-      // video_url required for server-side download; video_size derived from bytes if absent
-      if (!videoUrl) {
+      // Must have either a URL (server download) or bytes already from multipart
+      if (!videoUrl && localFileBytes === null) {
         return json(
-          { ok: false, error: "Missing required field: video_url for FILE_UPLOAD with upload_binary" },
+          {
+            ok: false,
+            error:
+              "Missing video source: supply video_url in JSON or send file as multipart/form-data",
+          },
           400,
         );
       }
@@ -249,10 +314,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: false, error: "TikTok access token unavailable" }, 401);
   }
 
-  // ── Download video bytes (FILE_UPLOAD + upload_binary only) ────────────────
-  // videoSize may be derived here if the caller did not supply it.
-  let videoBytes: ArrayBuffer | null = null;
-  if (uploadMode === "FILE_UPLOAD" && uploadBinary) {
+  // ── Resolve video bytes for FILE_UPLOAD + upload_binary ────────────────────
+  // localFileBytes is set when the browser sent a multipart upload.
+  // If null, download from videoUrl instead (server-side only).
+  let videoBytes: ArrayBuffer | null = localFileBytes;
+  if (uploadMode === "FILE_UPLOAD" && uploadBinary && videoBytes === null) {
     try {
       const dlRes = await fetch(videoUrl!);
       if (!dlRes.ok) {
@@ -270,7 +336,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       console.error("[tiktok-publish-video] Video download threw:", (err as Error).message);
       return json({ ok: false, error: "Failed to download video from video_url" }, 502);
     }
-    // Apply defaults now that videoSize is known
+    // Apply defaults now that videoSize is known (URL download path only)
     chunkSize = chunkSize ?? videoSize;
     totalChunkCount = totalChunkCount ?? 1;
   }
@@ -296,6 +362,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     connectionOpenIdMasked: maskOpenId(connection!.open_id),
     ...(connection!.scope != null && { connectionScope: connection!.scope }),
     ...(connection!.last_token_exchange_at != null && { connectionLastTokenExchangeAt: connection!.last_token_exchange_at }),
+    ...(connection!.display_name != null && { connectionDisplayName: connection!.display_name }),
+    ...(connection!.username != null && { connectionUsername: connection!.username }),
     ...(videoUrl !== undefined && { requestedVideoUrl: videoUrl }),
     requestedTitle: title,
     ...(privacyLevel !== undefined && { requestedPrivacyLevel: privacyLevel }),
@@ -304,23 +372,46 @@ Deno.serve(async (req: Request): Promise<Response> => {
     ...(totalChunkCount !== undefined && { totalChunkCount }),
   };
 
-  // ── Call TikTok Content Posting API — inbox upload init ───────────────────
+  // ── Call TikTok Direct Post API — production publish init ─────────────────
   // access_token is used here server-side only; never logged, never returned.
+  // post_info is required by the direct post endpoint (video.publish scope).
+  // branded_content_toggle must never be true when privacy_level is SELF_ONLY — TikTok rejects the combination.
+  // Apply the guard server-side regardless of what the client sent.
+  const safeBrandedContent =
+    brandedContentToggle === true && (privacyLevel ?? "SELF_ONLY") !== "SELF_ONLY";
+
+  const postInfo: Record<string, unknown> = {
+    title: title!,
+    privacy_level: privacyLevel ?? "SELF_ONLY",
+    ...(disableComment !== undefined && { disable_comment: disableComment }),
+    ...(disableDuet !== undefined && { disable_duet: disableDuet }),
+    ...(disableStitch !== undefined && { disable_stitch: disableStitch }),
+    ...(brandContentToggle !== undefined && { brand_content_toggle: brandContentToggle }),
+    ...(brandOrganicToggle !== undefined && { brand_organic_toggle: brandOrganicToggle }),
+    ...(brandedContentToggle !== undefined && { branded_content_toggle: safeBrandedContent }),
+  };
+
+  console.log("[tiktok-publish-video] endpoint=direct_post privacy_level=" + postInfo.privacy_level);
+
   let tikTokData: TikTokInitResponse;
   try {
     const tikTokRes = await fetch(
-      "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/",
+      "https://open.tiktokapis.com/v2/post/publish/video/init/",
       {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${connection!.access_token}`,
           "Content-Type": "application/json; charset=UTF-8",
         },
-        body: JSON.stringify({ source_info: sourceInfo }),
+        body: JSON.stringify({ post_info: postInfo, source_info: sourceInfo }),
       },
     );
 
     tikTokData = (await tikTokRes.json()) as TikTokInitResponse;
+
+    console.log(
+      `[tiktok-publish-video] init status=${tikTokRes.status} publish_id_present=${!!tikTokData.data?.publish_id} upload_url_present=${!!tikTokData.data?.upload_url}`,
+    );
 
     if (!tikTokRes.ok) {
       console.error(

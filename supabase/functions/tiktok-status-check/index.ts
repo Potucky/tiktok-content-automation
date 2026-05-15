@@ -13,7 +13,7 @@
 //   SUPABASE_URL              — project REST base URL
 //   SUPABASE_SERVICE_ROLE_KEY — service role key; server-side only
 //   ALLOWED_ORIGIN            — frontend origin for CORS (required — no wildcard fallback)
-//   TIKTOK_ENV                — must be exactly "sandbox"
+//   TIKTOK_ENV                — must be exactly "production"
 
 const DB_TABLE = "creatorflow_tiktok_connections";
 
@@ -22,6 +22,9 @@ interface ConnectionRecord {
   access_token?: string;
   scope?: string;
   last_token_exchange_at?: string;
+  display_name?: string;
+  username?: string;
+  avatar_url?: string;
   [key: string]: unknown;
 }
 
@@ -76,11 +79,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const tiktokEnv = Deno.env.get("TIKTOK_ENV");
-  if (tiktokEnv !== "sandbox") {
+  if (tiktokEnv !== "production") {
     console.error(
-      `[tiktok-status-check] TIKTOK_ENV="${tiktokEnv ?? "(not set)"}" — must be "sandbox"`,
+      `[tiktok-status-check] TIKTOK_ENV="${tiktokEnv ?? "(not set)"}" — must be "production"`,
     );
-    return json({ ok: false, error: "Function is restricted to sandbox environment" }, 403);
+    return json({ ok: false, error: "Function is restricted to production environment" }, 403);
   }
 
   let publishId: string;
@@ -177,6 +180,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       connectionOpenIdMasked: maskOpenId(connection.open_id),
       ...(connection.scope != null && { connectionScope: connection.scope }),
       ...(connection.last_token_exchange_at != null && { connectionLastTokenExchangeAt: connection.last_token_exchange_at }),
+      ...(connection.display_name != null && { connectionDisplayName: connection.display_name }),
+      ...(connection.username != null && { connectionUsername: connection.username }),
       ...(!tikTokOk && {
         tikTokErrorCode: statusData.error?.code,
         tikTokErrorMessage: statusData.error?.message,

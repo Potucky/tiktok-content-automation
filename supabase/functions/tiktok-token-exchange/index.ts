@@ -13,6 +13,7 @@
 //   SUPABASE_SERVICE_ROLE_KEY — service role key; used only server-side, never returned
 
 const TIKTOK_TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/";
+const TIKTOK_USER_INFO_URL = "https://open.tiktokapis.com/v2/user/info/";
 const DB_TABLE = "creatorflow_tiktok_connections";
 
 // TikTok v2 token endpoint response shape
@@ -27,6 +28,18 @@ interface TikTokTokenResponse {
   error?: string;
   error_description?: string;
   log_id?: string;
+}
+
+// TikTok v2 user info endpoint — safe public fields only
+interface TikTokUserInfoResponse {
+  data?: {
+    user?: {
+      open_id?: string;
+      display_name?: string;
+      avatar_url?: string;
+    };
+  };
+  error?: { code?: string; message?: string; log_id?: string };
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -186,8 +199,88 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: false, error: "token_storage_failed" }, 502);
   }
 
+  // ── Fetch user profile info (non-critical — token storage already succeeded)
+  // Uses the access_token server-side only; it is never logged or returned.
+  // display_name and avatar_url are safe public fields.
+  let displayName: string | null = null;
+  let avatarUrl: string | null = null;
+  let userInfoAttempted = false;
+  let userInfoOk = false;
+  let userInfoErrorCode: string | null = null;
+  let userInfoErrorMessage: string | null = null;
+  let userInfoFieldsReceived: string[] = [];
+
+  if (tikTokData.access_token && tikTokData.open_id) {
+    userInfoAttempted = true;
+    try {
+      const userInfoRes = await fetch(
+        `${TIKTOK_USER_INFO_URL}?fields=open_id,display_name,avatar_url`,
+        {
+          headers: {
+            "Authorization": `Bearer ${tikTokData.access_token}`,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+      if (userInfoRes.ok) {
+        const userInfoData = (await userInfoRes.json()) as TikTokUserInfoResponse;
+        const errCode = userInfoData.error?.code;
+        if (errCode && errCode !== "ok") {
+          userInfoErrorCode = errCode;
+          userInfoErrorMessage = userInfoData.error?.message ?? null;
+          console.error(`[tiktok-token-exchange] User info error: ${userInfoErrorCode} — ${userInfoErrorMessage}`);
+        } else {
+          displayName = userInfoData.data?.user?.display_name ?? null;
+          avatarUrl = userInfoData.data?.user?.avatar_url ?? null;
+          userInfoOk = true;
+          const received: string[] = [];
+          if (userInfoData.data?.user?.open_id) received.push("open_id");
+          if (displayName) received.push("display_name");
+          if (avatarUrl) received.push("avatar_url");
+          userInfoFieldsReceived = received;
+        }
+      } else {
+        userInfoErrorCode = `http_${userInfoRes.status}`;
+        userInfoErrorMessage = `HTTP ${userInfoRes.status}`;
+        console.error(`[tiktok-token-exchange] User info fetch failed: HTTP ${userInfoRes.status}`);
+      }
+    } catch (err) {
+      userInfoErrorCode = "fetch_threw";
+      userInfoErrorMessage = (err as Error).message;
+      console.error("[tiktok-token-exchange] User info fetch threw:", (err as Error).message);
+    }
+
+    // Patch DB with profile fields — non-critical
+    const profilePatch: Record<string, string> = {};
+    if (displayName) profilePatch.display_name = displayName;
+    if (avatarUrl) profilePatch.avatar_url = avatarUrl;
+
+    if (Object.keys(profilePatch).length > 0) {
+      try {
+        const patchRes = await fetch(
+          `${supabaseUrl}/rest/v1/${DB_TABLE}?open_id=eq.${encodeURIComponent(tikTokData.open_id)}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": serviceRoleKey,
+              "Authorization": `Bearer ${serviceRoleKey}`,
+              "Prefer": "return=minimal",
+            },
+            body: JSON.stringify(profilePatch),
+          },
+        );
+        if (!patchRes.ok) {
+          console.error(`[tiktok-token-exchange] Profile patch failed: HTTP ${patchRes.status}`);
+        }
+      } catch (err) {
+        console.error("[tiktok-token-exchange] Profile patch threw:", (err as Error).message);
+      }
+    }
+  }
+
   // ── Return safe fields only ────────────────────────────────────────────────
-  // openId is the TikTok user identifier, not a secret — safe to return.
+  // openId, displayName, avatarUrl are safe public fields.
   // access_token and refresh_token are intentionally absent.
   return json({
     ok: true,
@@ -198,5 +291,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     scope: tikTokData.scope ?? null,
     tokenType: tikTokData.token_type ?? null,
     expiresIn: expiresIn || null,
+    displayName,
+    avatarUrl,
+    userInfoAttempted,
+    userInfoOk,
+    userInfoErrorCode,
+    userInfoErrorMessage,
+    userInfoFieldsReceived,
   });
 });
