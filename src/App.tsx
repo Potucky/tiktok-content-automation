@@ -1193,7 +1193,7 @@ function App() {
               checked={musicConfirmation}
               onChange={(e) => setMusicConfirmation(e.target.checked)}
             />
-            By posting, you agree to TikTok&rsquo;s Music Usage Confirmation
+            By posting, you agree to TikTok's Music Usage Confirmation
           </label>
 
           <label className="tt-consent">
